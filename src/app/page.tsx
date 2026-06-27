@@ -5,10 +5,72 @@ import { NeonGame } from "@/components/NeonGame";
 import { SceneObjectPicker } from "@/components/SceneObjectPicker";
 import { BoundingBox, createGameSpecFromPrompt, DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
 
+type AgentTraceStep = {
+  title: string;
+  detail: string;
+  status: "pending" | "active" | "complete" | "error";
+};
+
 const EXAMPLE_PROMPTS = [
-  "做一个赛博朋克霓虹风的大鱼吃小鱼游戏，玩家控制一条发光几何鱼，通过吞噬更小的彩色发光鱼进化变大，带倒计时和分数显示。",
-  "做一个赛博朋克霓虹风的连连看游戏，网格里满是发光的IT图标，玩家连接两个相同图标即可消除，带倒计时和分数显示。",
-  "做一个满屏塑料泡泡的解压小游戏，手指点哪哪里就会啪的一声破掉，捏完可以一键刷新。",
+  "Create a neon link-match game from the objects in this room.",
+  "Turn this scene into a cyberpunk tower-defense game.",
+  "Make a relaxing bubble-pop game based on the photographed objects.",
+];
+
+const IDLE_AGENT_TRACE: AgentTraceStep[] = [
+  {
+    title: "Waiting for photo",
+    detail: "Upload a scene. The managed agent will infer the game prompt from the image.",
+    status: "pending",
+  },
+  {
+    title: "Scene understanding",
+    detail: "The agent will identify visible objects, setting, and usable game tokens.",
+    status: "pending",
+  },
+  {
+    title: "Prompt generation",
+    detail: "The English game prompt will be generated automatically from the photo.",
+    status: "pending",
+  },
+  {
+    title: "Game grounding",
+    detail: "The selected template will reuse photo-derived objects inside the playable runtime.",
+    status: "pending",
+  },
+  {
+    title: "GameSpec validation",
+    detail: "The final JSON is sanitized before the game is enabled.",
+    status: "pending",
+  },
+];
+
+const RUNNING_AGENT_TRACE: AgentTraceStep[] = [
+  {
+    title: "Photo submitted",
+    detail: "Uploading the scene and optional prompt to the managed agent.",
+    status: "complete",
+  },
+  {
+    title: "Scene understanding",
+    detail: "Extracting setting, visible objects, and visual mood from the image.",
+    status: "active",
+  },
+  {
+    title: "Prompt generation",
+    detail: "Creating an English game prompt from the photo.",
+    status: "pending",
+  },
+  {
+    title: "Game grounding",
+    detail: "Mapping photo objects into the selected game template.",
+    status: "pending",
+  },
+  {
+    title: "GameSpec validation",
+    detail: "Waiting for structured JSON from the managed agent.",
+    status: "pending",
+  },
 ];
 
 export default function Home() {
@@ -17,7 +79,7 @@ export default function Home() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
-  const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[0]);
+  const [prompt, setPrompt] = useState("");
   const [dragging, setDragging] = useState(false);
   const [gameReady, setGameReady] = useState(false);
   const [gameSpec, setGameSpec] = useState<GameSpec>(DEFAULT_GAME_SPEC);
@@ -26,11 +88,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationSource, setGenerationSource] = useState<"managed-agent" | "gemini" | "fallback" | "demo" | null>(null);
   const [generationNotice, setGenerationNotice] = useState("");
-
-  // Stepper Loading State (0: idle/none, 1: analyzing, 2: detecting, 3: building, 4: ready)
-  const [currentStep, setCurrentStep] = useState<number>(0);
-  const stepTimer1 = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stepTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [agentTrace, setAgentTrace] = useState<AgentTraceStep[]>(IDLE_AGENT_TRACE);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -49,7 +107,12 @@ export default function Home() {
     setSelectedPlayerBox(null);
     setGenerationSource("demo");
     setGenerationNotice("");
-    setCurrentStep(4);
+    setAgentTrace([
+      { title: "Demo scene loaded", detail: "Using the bundled demo image.", status: "complete" },
+      { title: "Prompt generated", detail: safeSpec.scene.prompt, status: "complete" },
+      { title: "Game grounded", detail: `Runtime tokens: ${safeSpec.scene.objects.join(", ")}`, status: "complete" },
+      { title: "GameSpec validation", detail: `${safeSpec.template} game is ready.`, status: "complete" },
+    ]);
     setGameReady(true);
     setViewMode("play");
   }, []);
@@ -57,8 +120,6 @@ export default function Home() {
   useEffect(() => {
     return () => {
       if (imageUrl) URL.revokeObjectURL(imageUrl);
-      if (stepTimer1.current) clearTimeout(stepTimer1.current);
-      if (stepTimer2.current) clearTimeout(stepTimer2.current);
     };
   }, [imageUrl]);
 
@@ -106,7 +167,7 @@ export default function Home() {
     setSelectedPlayerBox(null);
     setGenerationSource(null);
     setGenerationNotice("");
-    setCurrentStep(0);
+    setAgentTrace(IDLE_AGENT_TRACE);
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -131,7 +192,7 @@ export default function Home() {
     setSelectedPlayerBox(null);
     setGenerationSource("demo");
     setGenerationNotice("");
-    setCurrentStep(0);
+    setAgentTrace(IDLE_AGENT_TRACE);
   }
 
   function createBaseSpec(includeDemoBoxes: boolean, forceDodge = false) {
@@ -141,6 +202,10 @@ export default function Home() {
     const { gameSpec: safeSpec } = sanitizeGameSpec({
       ...baseSpec,
       objective: prompt,
+      scene: {
+        ...baseSpec.scene,
+        prompt: prompt || baseSpec.scene.prompt,
+      },
       player: {
         ...baseSpec.player,
         box2d: includeDemoBoxes ? [356, 296, 731, 713] : null,
@@ -166,7 +231,6 @@ export default function Home() {
     if (safeSpec.template !== "dodge" || (safeSpec.player.box2d && safeSpec.enemy.box2d)) {
       setSelectionTarget(null);
       setGameReady(true);
-      setCurrentStep(4);
       return;
     }
     setSelectedPlayerBox(null);
@@ -178,7 +242,15 @@ export default function Home() {
     if (!imageUrl) return;
     if (imageUrl === "/demo-scene.svg") {
       setGenerationSource("demo");
-      applyGeneratedSpec(createBaseSpec(true));
+      const demoSpec = createBaseSpec(true);
+      setPrompt(demoSpec.scene.prompt);
+      setAgentTrace([
+        { title: "Demo scene loaded", detail: "Using the bundled demo image.", status: "complete" },
+        { title: "Prompt generated", detail: demoSpec.scene.prompt, status: "complete" },
+        { title: "Game grounded", detail: `Runtime tokens: ${demoSpec.scene.objects.join(", ")}`, status: "complete" },
+        { title: "GameSpec validation", detail: `${demoSpec.template} game is ready.`, status: "complete" },
+      ]);
+      applyGeneratedSpec(demoSpec);
       return;
     }
     if (!imageFile) {
@@ -190,19 +262,7 @@ export default function Home() {
     setGameReady(false);
     setSelectionTarget(null);
     setGenerationNotice("");
-    setCurrentStep(1);
-
-    // Simulate stepping progression
-    if (stepTimer1.current) clearTimeout(stepTimer1.current);
-    if (stepTimer2.current) clearTimeout(stepTimer2.current);
-
-    stepTimer1.current = setTimeout(() => {
-      setCurrentStep(2);
-    }, 1200);
-
-    stepTimer2.current = setTimeout(() => {
-      setCurrentStep(3);
-    }, 2800);
+    setAgentTrace(RUNNING_AGENT_TRACE);
 
     try {
       const formData = new FormData();
@@ -214,20 +274,35 @@ export default function Home() {
         source?: "managed-agent" | "gemini" | "fallback";
         gameSpec?: unknown;
         warnings?: string[];
+        suggestedPrompt?: string;
+        agentTrace?: AgentTraceStep[];
       };
       const { gameSpec: safeSpec, warnings } = sanitizeGameSpec(result.gameSpec);
       const combinedWarnings = [...(result.warnings ?? []), ...warnings];
       setGenerationSource(result.source ?? "fallback");
       setGenerationNotice(combinedWarnings[0] ?? "");
+      setPrompt(result.suggestedPrompt ?? safeSpec.scene.prompt);
+      setAgentTrace(result.agentTrace?.length ? result.agentTrace : [
+        { title: "Scene understood", detail: safeSpec.scene.summary, status: "complete" },
+        { title: "Prompt generated", detail: safeSpec.scene.prompt, status: "complete" },
+        { title: "Game grounded", detail: `Runtime tokens: ${safeSpec.scene.objects.join(", ")}`, status: "complete" },
+        { title: "GameSpec validation", detail: `${safeSpec.template} game is ready.`, status: "complete" },
+      ]);
       applyGeneratedSpec(safeSpec);
     } catch {
+      const fallbackSpec = createBaseSpec(false);
       setGenerationSource("fallback");
       setGenerationNotice("Generation was unavailable; local prompt template selected.");
-      setGameSpec(createBaseSpec(false));
+      setGameSpec(fallbackSpec);
+      setPrompt(fallbackSpec.scene.prompt);
+      setAgentTrace([
+        { title: "Managed agent unavailable", detail: "The request failed before a structured response was received.", status: "error" },
+        { title: "Local fallback selected", detail: fallbackSpec.scene.prompt, status: "complete" },
+        { title: "GameSpec validation", detail: `${fallbackSpec.template} game is ready.`, status: "complete" },
+      ]);
       setSelectedPlayerBox(null);
       setSelectionTarget(null);
       setGameReady(true);
-      setCurrentStep(4);
     } finally {
       setIsGenerating(false);
     }
@@ -248,23 +323,27 @@ export default function Home() {
       setGameSpec(safeSpec);
       setSelectionTarget(null);
       setGameReady(true);
-      setCurrentStep(4);
     }
   }
 
   function useDefaultAssets() {
-    setGameSpec(createBaseSpec(false, true));
+    const safeSpec = createBaseSpec(false, true);
+    setGameSpec(safeSpec);
+    setPrompt(safeSpec.scene.prompt);
+    setAgentTrace([
+      { title: "Manual fallback selected", detail: "Using built-in game assets for the current photo.", status: "complete" },
+      { title: "GameSpec validation", detail: `${safeSpec.template} game is ready.`, status: "complete" },
+    ]);
     setSelectionTarget(null);
     setGameReady(true);
-    setCurrentStep(4);
   }
 
   // Returns progress height of the stepper bar
   const getProgressHeight = () => {
-    if (currentStep <= 1) return "0%";
-    if (currentStep === 2) return "33%";
-    if (currentStep === 3) return "66%";
-    return "100%";
+    if (agentTrace.length <= 1) return "0%";
+    const completedIndex = agentTrace.findLastIndex((step) => step.status === "complete" || step.status === "error");
+    if (completedIndex <= 0) return "0%";
+    return `${Math.round((completedIndex / (agentTrace.length - 1)) * 100)}%`;
   };
 
   return (
@@ -351,11 +430,12 @@ export default function Home() {
 
               {/* Prompt Textarea */}
               <div className="prompt-textarea-container">
-                <span className="prompt-label">Your Game Prompt</span>
+                <span className="prompt-label">Agent Game Prompt</span>
                 <textarea
                   className="prompt-textarea"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Leave this blank. The managed agent will generate an English game prompt from the photo."
                   maxLength={300}
                 />
                 <span className="prompt-char-count">{prompt.length}/300</span>
@@ -379,7 +459,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="primary-neon-btn"
-                  disabled={!imageUrl || !prompt.trim() || isGenerating}
+                  disabled={!imageUrl || isGenerating}
                   onClick={generateGame}
                 >
                   <span>{isGenerating ? "Analyzing scene…" : "Generate Game"}</span>
@@ -415,7 +495,12 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="stepper-content">
-                  <h3 className="stepper-card-title">AI Game Generation Status</h3>
+                  <div className="stepper-header-row">
+                    <h3 className="stepper-card-title">Agent Calculation Flow</h3>
+                    {generationSource && (
+                      <span className="agent-source-badge">{generationSource}</span>
+                    )}
+                  </div>
                   <div className="stepper-container">
                     <div className="stepper-line-connector" />
                     <div
@@ -423,78 +508,28 @@ export default function Home() {
                       style={{ height: getProgressHeight() }}
                     />
 
-                    {/* Step 1: Analyzing Scene */}
-                    <div
-                      className={`stepper-step ${
-                        currentStep > 1
-                          ? "completed"
-                          : currentStep === 1
-                          ? "active"
-                          : "pending"
-                      }`}
-                    >
-                      <div className="stepper-icon-circle">
-                        {currentStep > 1 ? "✓" : "1"}
+                    {agentTrace.map((step, index) => (
+                      <div
+                        className={`stepper-step ${
+                          step.status === "complete"
+                            ? "completed"
+                            : step.status === "active"
+                            ? "active"
+                            : step.status === "error"
+                            ? "completed error"
+                            : "pending"
+                        }`}
+                        key={`${step.title}-${index}`}
+                      >
+                        <div className="stepper-icon-circle">
+                          {step.status === "complete" ? "✓" : step.status === "error" ? "!" : index + 1}
+                        </div>
+                        <div className="stepper-text-content">
+                          <span className="stepper-label">{step.title}</span>
+                          <span className="stepper-desc">{step.detail}</span>
+                        </div>
                       </div>
-                      <div className="stepper-text-content">
-                        <span className="stepper-label">Analyzing Scene</span>
-                      </div>
-                    </div>
-
-                    {/* Step 2: Detecting Objects */}
-                    <div
-                      className={`stepper-step ${
-                        currentStep > 2
-                          ? "completed"
-                          : currentStep === 2
-                          ? "active"
-                          : "pending"
-                      }`}
-                    >
-                      <div className="stepper-icon-circle">
-                        {currentStep > 2 ? "✓" : "2"}
-                      </div>
-                      <div className="stepper-text-content">
-                        <span className="stepper-label">Detecting Objects</span>
-                      </div>
-                    </div>
-
-                    {/* Step 3: Building Game */}
-                    <div
-                      className={`stepper-step ${
-                        currentStep > 3
-                          ? "completed"
-                          : currentStep === 3
-                          ? "active"
-                          : "pending"
-                      }`}
-                    >
-                      <div className="stepper-icon-circle">
-                        {currentStep > 3 ? "✓" : "3"}
-                      </div>
-                      <div className="stepper-text-content">
-                        <span className="stepper-label">Building Game</span>
-                      </div>
-                    </div>
-
-                    {/* Step 4: Ready */}
-                    <div
-                      className={`stepper-step ${
-                        currentStep === 4 ? "active completed" : "pending"
-                      }`}
-                    >
-                      <div className="stepper-icon-circle">
-                        {currentStep === 4 ? "✓" : "4"}
-                      </div>
-                      <div className="stepper-text-content">
-                        <span className="stepper-label">Ready</span>
-                        {currentStep === 4 && (
-                          <span className="stepper-desc">
-                            Your custom {gameSpec.template} game has been generated from the prompt.
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -509,7 +544,7 @@ export default function Home() {
               <div className="game-meta-left">
                 <span className="game-meta-title">Mini-Game: {gameSpec.title}</span>
                 <span className="game-meta-stats">
-                  Type: {gameSpec.template} | Difficulty: {gameSpec.difficulty} | Goal: {gameSpec.objective}
+                  Type: {gameSpec.template} | Difficulty: {gameSpec.difficulty} | Scene: {gameSpec.scene.summary}
                 </span>
               </div>
               <button

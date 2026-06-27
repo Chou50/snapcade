@@ -33,11 +33,18 @@ export const gameEntitySchema = z.object({
   fallbackAsset: z.enum(["player", "enemy"]),
 });
 
+export const sceneSchema = z.object({
+  summary: z.string().min(1).max(140),
+  prompt: z.string().min(1).max(220),
+  objects: z.array(z.string().min(1).max(24)).min(3).max(8),
+});
+
 export const gameSpecSchema = z.object({
   version: z.literal("1.0"),
   template: z.enum(GAME_TEMPLATES),
   title: z.string().min(1).max(60),
   objective: z.string().min(1).max(120),
+  scene: sceneSchema,
   player: gameEntitySchema,
   enemy: gameEntitySchema,
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
@@ -60,6 +67,8 @@ type TemplateDefaults = Pick<GameSpec, "title" | "objective" | "durationSeconds"
   enemyLabel: string;
   primaryColor: string;
   backgroundTint: string;
+  sceneSummary: string;
+  sceneObjects: string[];
 };
 
 const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
@@ -71,6 +80,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "larger predator fish",
     primaryColor: "#A855F7",
     backgroundTint: "#050816",
+    sceneSummary: "A photographed scene remixed into a neon underwater arena.",
+    sceneObjects: ["desk fish", "lamp reef", "screen coral", "chair current", "mug pearl", "keyboard shell"],
   },
   "link-match": {
     title: "Code Match Connect",
@@ -80,6 +91,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "clock",
     primaryColor: "#38BDF8",
     backgroundTint: "#03111F",
+    sceneSummary: "A photographed workspace turned into a memory matching board.",
+    sceneObjects: ["laptop", "monitor", "keyboard", "coffee mug", "notebook", "desk lamp"],
   },
   oracle: {
     title: "Mystic Oracle",
@@ -89,6 +102,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "fading cosmic energy",
     primaryColor: "#C084FC",
     backgroundTint: "#090617",
+    sceneSummary: "A photographed scene interpreted as a neon fortune table.",
+    sceneObjects: ["photo omen", "light pattern", "table mark", "shadow sign", "object clue", "color aura"],
   },
   farming: {
     title: "Neon Harvest",
@@ -98,6 +113,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "empty plots",
     primaryColor: "#FACC15",
     backgroundTint: "#061519",
+    sceneSummary: "A photographed room reimagined as a compact neon farm.",
+    sceneObjects: ["desk plot", "lamp seed", "chair crop", "notebook bed", "cup planter", "cable vine"],
   },
   racing: {
     title: "Cyber Racer",
@@ -107,6 +124,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "traffic drones",
     primaryColor: "#22D3EE",
     backgroundTint: "#070A1A",
+    sceneSummary: "A photographed scene converted into a glowing race track.",
+    sceneObjects: ["desk straight", "cable curve", "chair gate", "screen tunnel", "mug cone", "lamp beacon"],
   },
   "tower-defense": {
     title: "Circuit Tower Defense",
@@ -116,6 +135,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "red neon enemies",
     primaryColor: "#60A5FA",
     backgroundTint: "#06111D",
+    sceneSummary: "A photographed scene mapped into a defendable circuit route.",
+    sceneObjects: ["monitor tower", "keyboard wall", "mug base", "lamp turret", "desk lane", "chair gate"],
   },
   "dress-up": {
     title: "Neon Style Lab",
@@ -125,6 +146,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "style timer",
     primaryColor: "#F472B6",
     backgroundTint: "#100516",
+    sceneSummary: "A photographed scene translated into a neon styling palette.",
+    sceneObjects: ["jacket", "screen glow", "desk trim", "lamp halo", "chair silhouette", "color accent"],
   },
   "bubble-pop": {
     title: "Bubble Pop Reset",
@@ -134,6 +157,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "un-popped bubbles",
     primaryColor: "#7DD3FC",
     backgroundTint: "#07111E",
+    sceneSummary: "A photographed scene transformed into tactile bubble targets.",
+    sceneObjects: ["desk bubble", "screen bubble", "mug bubble", "chair bubble", "lamp bubble", "cable bubble"],
   },
   dodge: {
     title: "Coffee Break Crisis",
@@ -143,6 +168,8 @@ const TEMPLATE_DEFAULTS: Record<GameTemplate, TemplateDefaults> = {
     enemyLabel: "coffee cup",
     primaryColor: "#7758FF",
     backgroundTint: "#11100F",
+    sceneSummary: "A photographed scene where one object must dodge another.",
+    sceneObjects: ["laptop", "coffee cup", "desk", "keyboard", "lamp", "notebook"],
   },
 };
 
@@ -155,6 +182,11 @@ function makeDefaultSpec(template: GameTemplate): GameSpec {
     template,
     title: defaults.title,
     objective: defaults.objective,
+    scene: {
+      summary: defaults.sceneSummary,
+      prompt: defaults.objective,
+      objects: defaults.sceneObjects,
+    },
     player: {
       label: defaults.playerLabel,
       box2d: null,
@@ -200,6 +232,37 @@ function cleanText(value: unknown, fallback: string, maxLength: number): string 
   if (typeof value !== "string") return fallback;
   const cleaned = value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, maxLength) : fallback;
+}
+
+function cleanSceneObject(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/[^A-Za-z0-9 /&-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  return cleaned.slice(0, 24);
+}
+
+function sanitizeSceneObjects(value: unknown, defaults: string[]): string[] {
+  const candidates = Array.isArray(value) ? value : [];
+  const objects: string[] = [];
+  for (const candidate of candidates) {
+    const cleaned = cleanSceneObject(candidate);
+    if (!cleaned) continue;
+    const duplicate = objects.some((item) => item.toLowerCase() === cleaned.toLowerCase());
+    if (!duplicate) objects.push(cleaned);
+    if (objects.length >= 8) break;
+  }
+
+  for (const fallback of defaults) {
+    if (objects.length >= 6) break;
+    const duplicate = objects.some((item) => item.toLowerCase() === fallback.toLowerCase());
+    if (!duplicate) objects.push(fallback);
+  }
+
+  return objects.slice(0, 8);
 }
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
@@ -290,9 +353,14 @@ function sanitizeTemplate(raw: unknown, promptText: string): GameTemplate {
 export function createGameSpecFromPrompt(prompt: string): GameSpec {
   const template = inferGameTemplate(prompt);
   const defaults = makeDefaultSpec(template);
+  const cleanPrompt = cleanText(prompt, defaults.objective, 220);
   return {
     ...defaults,
     objective: cleanText(prompt, defaults.objective, 120),
+    scene: {
+      ...defaults.scene,
+      prompt: cleanPrompt,
+    },
   };
 }
 
@@ -305,12 +373,15 @@ export function sanitizeGameSpec(input: unknown): SanitizeResult {
     raw.title,
     raw.genre,
     raw.template,
+    asRecord(raw.scene).prompt,
+    asRecord(raw.scene).summary,
   ].filter((value): value is string => typeof value === "string").join(" ");
   const template = sanitizeTemplate(raw.template, promptText);
   const defaults = makeDefaultSpec(template);
   const rawPlayer = asRecord(raw.player);
   const rawEnemy = asRecord(raw.enemy);
   const rawTheme = asRecord(raw.theme);
+  const rawScene = asRecord(raw.scene);
 
   const playerBox = sanitizeBox(rawPlayer.box2d, "Player", warnings);
   let enemyBox = sanitizeBox(rawEnemy.box2d, "Enemy", warnings);
@@ -328,6 +399,11 @@ export function sanitizeGameSpec(input: unknown): SanitizeResult {
     template,
     title: cleanText(raw.title, defaults.title, 60),
     objective: cleanText(raw.objective, defaults.objective, 120),
+    scene: {
+      summary: cleanText(rawScene.summary, defaults.scene.summary, 140),
+      prompt: cleanText(rawScene.prompt, defaults.scene.prompt, 220),
+      objects: sanitizeSceneObjects(rawScene.objects, defaults.scene.objects),
+    },
     player: {
       label: cleanText(rawPlayer.label, defaults.player.label, 40),
       box2d: playerBox,

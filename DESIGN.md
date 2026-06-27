@@ -194,9 +194,14 @@ type GameEntity = {
 
 type GameSpec = {
   version: "1.0";
-  template: "dodge";
+  template: "fish-eat" | "link-match" | "oracle" | "farming" | "racing" | "tower-defense" | "dress-up" | "bubble-pop" | "dodge";
   title: string;
   objective: string;
+  scene: {
+    summary: string;
+    prompt: string;
+    objects: string[];
+  };
   player: GameEntity;
   enemy: GameEntity;
   difficulty: 1 | 2 | 3;
@@ -216,6 +221,11 @@ type GameSpec = {
   "template": "dodge",
   "title": "Coffee Break Crisis",
   "objective": "Protect the laptop and survive",
+  "scene": {
+    "summary": "A desk scene with a laptop and coffee cup.",
+    "prompt": "Create a short survival game from this desk photo.",
+    "objects": ["laptop", "coffee cup", "keyboard", "desk lamp", "notebook", "chair"]
+  },
   "player": {
     "label": "laptop",
     "box2d": [600, 400, 800, 650],
@@ -460,7 +470,7 @@ generate_game_spec(scene_analysis)
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | `image` | File | JPEG/PNG/WebP，限制大小 |
-| `prompt` | string | 1–300 字符 |
+| `prompt` | string | 可选，0–300 字符；为空时由 Agent 根据图片自动生成英文 prompt |
 
 成功响应：
 
@@ -469,6 +479,8 @@ generate_game_spec(scene_analysis)
   "requestId": "demo-123",
   "source": "managed-agent",
   "gameSpec": {},
+  "suggestedPrompt": "Create a neon link-match game from the office objects.",
+  "agentTrace": [],
   "warnings": []
 }
 ```
