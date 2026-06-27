@@ -1,6 +1,6 @@
 # Snapcade
 
-Turn a photo of the current scene into a playable nine-second dodge game.
+Turn a photo of the current scene into a playable mini-game grounded in the objects from that photo.
 
 ## Local development
 
@@ -17,7 +17,7 @@ GEMINI_API_KEY=your_key
 GEMINI_AGENT=antigravity-preview-05-2026
 ```
 
-The application never sends the API key to the browser. Game generation runs through the Gemini API Interactions API using the Antigravity managed agent. If the managed agent is unavailable, generation returns a safe `GameSpec` and asks the user to select the player and enemy directly in the image.
+The application never sends the API key to the browser. Game generation runs through the Gemini API Interactions API using the Antigravity managed agent. The user prompt is optional: the agent can generate an English game prompt from the uploaded image, return visible scene objects, and expose a reader-facing calculation trace. If the managed agent is unavailable, generation returns a safe `GameSpec` and keeps the app playable.
 
 ## Verification
 

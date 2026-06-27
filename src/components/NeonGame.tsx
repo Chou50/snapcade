@@ -92,8 +92,18 @@ function createFishes() {
   }));
 }
 
-function createCells() {
-  const deck = [...ICONS, ...ICONS, ...ICONS, ...ICONS];
+function shortLabel(label: string, maxLength = 12) {
+  const cleaned = label.replace(/\s+/g, " ").trim();
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 1)}…` : cleaned;
+}
+
+function sceneToken(spec: GameSpec, index: number) {
+  return spec.scene.objects[index % spec.scene.objects.length] ?? ICONS[index % ICONS.length];
+}
+
+function createCells(spec: GameSpec) {
+  const labels = spec.scene.objects.length > 0 ? spec.scene.objects.slice(0, 6) : ICONS;
+  const deck = [...labels, ...labels, ...labels, ...labels];
   return deck.map((icon, index) => ({ icon: deck[(index * 7) % deck.length], cleared: false }));
 }
 
@@ -125,7 +135,7 @@ function initialState(spec: GameSpec): RuntimeState {
     target: { x: WIDTH / 2, y: HEIGHT / 2 },
     player: { x: WIDTH / 2, y: HEIGHT / 2, size: 28 },
     fishes: createFishes(),
-    cells: createCells(),
+    cells: createCells(spec),
     selectedCell: null,
     pickedCard: null,
     plots: Array.from({ length: 9 }, () => ({ stage: 0, growth: 0 })),
@@ -168,13 +178,28 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.restore();
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, spec: GameSpec) {
+function drawBackground(ctx: CanvasRenderingContext2D, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
   const gradient = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
   gradient.addColorStop(0, spec.theme.backgroundTint);
   gradient.addColorStop(0.5, "#090016");
   gradient.addColorStop(1, "#03141f");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  if (sceneImage?.complete && sceneImage.naturalWidth > 0) {
+    const scale = Math.max(WIDTH / sceneImage.naturalWidth, HEIGHT / sceneImage.naturalHeight);
+    const drawWidth = sceneImage.naturalWidth * scale;
+    const drawHeight = sceneImage.naturalHeight * scale;
+    const dx = (WIDTH - drawWidth) / 2;
+    const dy = (HEIGHT - drawHeight) / 2;
+    ctx.save();
+    ctx.globalAlpha = 0.26;
+    ctx.filter = "saturate(1.25) contrast(1.08)";
+    ctx.drawImage(sceneImage, dx, dy, drawWidth, drawHeight);
+    ctx.restore();
+    ctx.fillStyle = "rgba(3, 7, 18, 0.62)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  }
 
   ctx.save();
   ctx.strokeStyle = "rgba(99, 102, 241, 0.16)";
@@ -192,6 +217,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, spec: GameSpec) {
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function drawPhotoTokens(ctx: CanvasRenderingContext2D, spec: GameSpec) {
+  const label = `Photo tokens: ${spec.scene.objects.slice(0, 4).map((item) => shortLabel(item, 11)).join(" / ")}`;
+  drawText(ctx, label, WIDTH / 2, 76, 12, "#BAE6FD", "center");
 }
 
 function drawHud(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
@@ -229,8 +259,8 @@ function drawFish(ctx: CanvasRenderingContext2D, fish: { x: number; y: number; r
   ctx.restore();
 }
 
-function drawFishEat(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawFishEat(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   for (let y = 120; y < 480; y += 80) {
     ctx.strokeStyle = "rgba(34, 211, 238, 0.12)";
     ctx.beginPath();
@@ -241,13 +271,15 @@ function drawFishEat(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: G
   state.fishes.forEach((fish) => drawFish(ctx, fish, fish.vx >= 0 ? 1 : -1));
   drawFish(ctx, { ...state.player, r: state.player.size, color: spec.theme.primaryColor }, 1);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   drawText(ctx, `Size ${Math.round(state.player.size)}`, 32, HEIGHT - 28, 16, "#BAE6FD");
 }
 
-function drawLinkMatch(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawLinkMatch(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawPanel(ctx, 74, 84, 572, 352, spec.theme.primaryColor);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   const size = 64;
   const startX = 144;
   const startY = 130;
@@ -266,14 +298,16 @@ function drawLinkMatch(ctx: CanvasRenderingContext2D, state: RuntimeState, spec:
     ctx.shadowBlur = 12;
     ctx.fill();
     ctx.stroke();
-    drawText(ctx, cell.icon, x + size / 2, y + 34, cell.icon.length > 3 ? 14 : 24, "#E0F2FE", "center");
+    const label = shortLabel(cell.icon, 10);
+    drawText(ctx, label, x + size / 2, y + 32, label.length > 6 ? 12 : 18, "#E0F2FE", "center");
     ctx.restore();
   });
 }
 
-function drawOracle(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawOracle(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   const cx = WIDTH / 2;
   const cy = 220;
   const orb = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, 92);
@@ -293,35 +327,36 @@ function drawOracle(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: Ga
     const angle = (i / 16) * Math.PI * 2;
     drawText(ctx, ["✧", "☾", "◇", "ᚱ"][i % 4], cx + Math.cos(angle) * 135, cy + Math.sin(angle) * 105, 18, COLORS[i % COLORS.length], "center");
   }
-  ["THE FOOL", "THE MOON", "THE STAR"].forEach((name, index) => {
+  [sceneToken(spec, 0), sceneToken(spec, 1), sceneToken(spec, 2)].forEach((name, index) => {
     const x = 215 + index * 105;
     const picked = state.pickedCard === index;
     drawPanel(ctx, x, 355, 78, 108, picked ? "#FACC15" : spec.theme.primaryColor);
     drawText(ctx, picked ? "✦" : "◇", x + 39, 410, 34, picked ? "#FACC15" : "#E9D5FF", "center");
-    drawText(ctx, name, x + 39, 446, 10, "#FFFFFF", "center");
+    drawText(ctx, shortLabel(name, 9).toUpperCase(), x + 39, 446, 10, "#FFFFFF", "center");
   });
   if (state.pickedCard !== null) drawText(ctx, state.message, WIDTH / 2, 330, 18, "#FDE68A", "center");
 }
 
-function drawFarming(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawFarming(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawHud(ctx, state, spec);
-  drawText(ctx, "Neon Harvest Grid", WIDTH / 2, 95, 30, "#FFFFFF", "center");
+  drawPhotoTokens(ctx, spec);
+  drawText(ctx, `${shortLabel(sceneToken(spec, 0), 12)} Harvest Grid`, WIDTH / 2, 105, 25, "#FFFFFF", "center");
   state.plots.forEach((plot, index) => {
     const col = index % 3;
     const row = Math.floor(index / 3);
     const x = 250 + col * 82;
     const y = 135 + row * 78;
     drawPanel(ctx, x, y, 62, 54, plot.stage === 3 ? "#FACC15" : "#34D399");
-    const symbols = ["+", "seed", "sprout", "crop"];
-    drawText(ctx, symbols[plot.stage], x + 31, y + 34, plot.stage === 0 ? 24 : 13, plot.stage === 3 ? "#FACC15" : "#86EFAC", "center");
+    const symbols = ["+", "seed", shortLabel(sceneToken(spec, index), 8), "crop"];
+    drawText(ctx, symbols[plot.stage], x + 31, y + 34, plot.stage === 0 ? 24 : 12, plot.stage === 3 ? "#FACC15" : "#86EFAC", "center");
   });
   drawPanel(ctx, 250, 404, 220, 58, "#FACC15");
   drawText(ctx, "Click plots: seed > water > harvest", WIDTH / 2, 439, 15, "#FEF3C7", "center");
 }
 
-function drawRacing(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawRacing(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   ctx.save();
   ctx.strokeStyle = "#22D3EE";
   ctx.lineWidth = 34;
@@ -352,6 +387,8 @@ function drawRacing(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: Ga
   ctx.fill();
   ctx.restore();
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
+  drawText(ctx, `Track: ${shortLabel(sceneToken(spec, 0), 10)} > ${shortLabel(sceneToken(spec, 1), 10)}`, WIDTH / 2, 106, 14, "#E0F2FE", "center");
   drawText(ctx, "Arrow keys or drag to steer", WIDTH / 2, HEIGHT - 20, 14, "#BAE6FD", "center");
 }
 
@@ -362,9 +399,10 @@ function pathPoint(progress: number) {
   return { x: 330 + (p - 0.66) / 0.34 * 310, y: 380 };
 }
 
-function drawTowerDefense(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawTowerDefense(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   ctx.save();
   ctx.strokeStyle = "#38BDF8";
   ctx.lineWidth = 34;
@@ -385,20 +423,21 @@ function drawTowerDefense(ctx: CanvasRenderingContext2D, state: RuntimeState, sp
     drawText(ctx, "●", point.x, point.y + 8, 38, "#FB7185", "center");
   });
   drawPanel(ctx, 220, 432, 280, 52, "#60A5FA");
-  drawText(ctx, `Tower: ${state.selectedTower === "tri" ? "Triangle" : "Square"} | Click path sides to build`, WIDTH / 2, 464, 14, "#DBEAFE", "center");
+  drawText(ctx, `Defend ${shortLabel(sceneToken(spec, 0), 10)} | Tower: ${state.selectedTower === "tri" ? "Triangle" : "Square"}`, WIDTH / 2, 464, 14, "#DBEAFE", "center");
 }
 
-function drawDressUp(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawDressUp(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   drawPanel(ctx, 290, 110, 140, 285, spec.theme.primaryColor);
   drawText(ctx, ["Short", "Halo", "Cyber"][state.outfit.hair], 360, 148, 15, "#FBCFE8", "center");
   drawText(ctx, "◯", 360, 205, 58, "#F9A8D4", "center");
   drawText(ctx, ["Jacket", "Armor", "Kimono"][state.outfit.clothes], 360, 278, 18, "#FFFFFF", "center");
   drawText(ctx, ["Glasses", "Wings", "Necklace"][state.outfit.accessory], 360, 344, 14, "#FDE68A", "center");
-  ["Hair", "Clothes", "Accessory"].forEach((label, index) => {
+  [sceneToken(spec, 0), sceneToken(spec, 1), sceneToken(spec, 2)].forEach((label, index) => {
     drawPanel(ctx, 58, 130 + index * 92, 130, 62, "#F472B6");
-    drawText(ctx, label, 123, 168 + index * 92, 16, "#FCE7F3", "center");
+    drawText(ctx, shortLabel(label, 12), 123, 168 + index * 92, 16, "#FCE7F3", "center");
   });
   ["Next Hair", "Next Fit", "Next Item"].forEach((label, index) => {
     drawPanel(ctx, 532, 130 + index * 92, 130, 62, "#22D3EE");
@@ -406,9 +445,10 @@ function drawDressUp(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: G
   });
 }
 
-function drawBubblePop(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawBubblePop(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
   state.bubbles.forEach((bubble) => {
     ctx.save();
     ctx.shadowColor = bubble.popped ? "transparent" : "#7DD3FC";
@@ -432,23 +472,24 @@ function drawBubblePop(ctx: CanvasRenderingContext2D, state: RuntimeState, spec:
   drawText(ctx, "Refresh", WIDTH / 2, 468, 16, "#E0F2FE", "center");
 }
 
-function drawDodge(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  drawBackground(ctx, spec);
+function drawDodge(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  drawBackground(ctx, spec, sceneImage);
   state.roadThings.forEach((thing) => drawText(ctx, "◆", thing.x, thing.y, 32, "#FB7185", "center"));
   drawText(ctx, "▰", state.player.x, 412, 44, spec.theme.primaryColor, "center");
   drawHud(ctx, state, spec);
+  drawPhotoTokens(ctx, spec);
 }
 
-function render(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec) {
-  if (state.template === "fish-eat") drawFishEat(ctx, state, spec);
-  if (state.template === "link-match") drawLinkMatch(ctx, state, spec);
-  if (state.template === "oracle") drawOracle(ctx, state, spec);
-  if (state.template === "farming") drawFarming(ctx, state, spec);
-  if (state.template === "racing") drawRacing(ctx, state, spec);
-  if (state.template === "tower-defense") drawTowerDefense(ctx, state, spec);
-  if (state.template === "dress-up") drawDressUp(ctx, state, spec);
-  if (state.template === "bubble-pop") drawBubblePop(ctx, state, spec);
-  if (state.template === "dodge") drawDodge(ctx, state, spec);
+function render(ctx: CanvasRenderingContext2D, state: RuntimeState, spec: GameSpec, sceneImage?: HTMLImageElement | null) {
+  if (state.template === "fish-eat") drawFishEat(ctx, state, spec, sceneImage);
+  if (state.template === "link-match") drawLinkMatch(ctx, state, spec, sceneImage);
+  if (state.template === "oracle") drawOracle(ctx, state, spec, sceneImage);
+  if (state.template === "farming") drawFarming(ctx, state, spec, sceneImage);
+  if (state.template === "racing") drawRacing(ctx, state, spec, sceneImage);
+  if (state.template === "tower-defense") drawTowerDefense(ctx, state, spec, sceneImage);
+  if (state.template === "dress-up") drawDressUp(ctx, state, spec, sceneImage);
+  if (state.template === "bubble-pop") drawBubblePop(ctx, state, spec, sceneImage);
+  if (state.template === "dodge") drawDodge(ctx, state, spec, sceneImage);
 }
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -585,8 +626,9 @@ function cellIndexFromPoint(x: number, y: number) {
   return null;
 }
 
-export function NeonGame({ spec, onExit }: NeonGameProps) {
+export function NeonGame({ imageUrl, spec, onExit }: NeonGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneImageRef = useRef<HTMLImageElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const stateRef = useRef<RuntimeState>(initialState(spec));
   const keysRef = useRef<Keys>({ left: false, right: false, up: false, down: false });
@@ -600,7 +642,7 @@ export function NeonGame({ spec, onExit }: NeonGameProps) {
   function draw() {
     const context = canvasRef.current?.getContext("2d");
     if (!context) return;
-    render(context, stateRef.current, spec);
+    render(context, stateRef.current, spec, sceneImageRef.current);
   }
 
   function reset(phase: Phase = "ready") {
@@ -733,6 +775,26 @@ export function NeonGame({ spec, onExit }: NeonGameProps) {
   }, [spec]);
 
   useEffect(() => {
+    const image = new Image();
+    let cancelled = false;
+    image.onload = () => {
+      if (cancelled) return;
+      sceneImageRef.current = image;
+      draw();
+    };
+    image.onerror = () => {
+      if (cancelled) return;
+      sceneImageRef.current = null;
+      draw();
+    };
+    image.src = imageUrl;
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageUrl]);
+
+  useEffect(() => {
     function setKey(event: KeyboardEvent, value: boolean) {
       if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "a", "A", "d", "D", "w", "W", "s", "S", "f", "F"].includes(event.key)) {
         event.preventDefault();
@@ -772,6 +834,7 @@ export function NeonGame({ spec, onExit }: NeonGameProps) {
       coordinateSystem: "canvas origin top-left, x right, y down",
       template: stateRef.current.template,
       ...snapshot(stateRef.current),
+      scene: spec.scene,
       player: stateRef.current.player,
       visibleFishes: stateRef.current.fishes.slice(0, 5),
       unclearedCells: stateRef.current.cells.filter((cell) => !cell.cleared).length,

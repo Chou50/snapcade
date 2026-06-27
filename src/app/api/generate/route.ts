@@ -32,6 +32,28 @@ const gameSpecJsonSchema = {
     },
     title: { type: "string", description: "A short, cyberpunk/neon game title." },
     objective: { type: "string", description: "One sentence describing how to play or win." },
+    scene: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: {
+          type: "string",
+          description: "A concise English summary of the uploaded photo and why it fits the chosen game.",
+        },
+        prompt: {
+          type: "string",
+          description: "The English game prompt generated from the photo and any user request.",
+        },
+        objects: {
+          type: "array",
+          minItems: 3,
+          maxItems: 8,
+          items: { type: "string" },
+          description: "Short labels for visible photo objects that the game runtime should reuse.",
+        },
+      },
+      required: ["summary", "prompt", "objects"],
+    },
     player: {
       type: "object",
       additionalProperties: false,
@@ -75,6 +97,7 @@ const gameSpecJsonSchema = {
     "template",
     "title",
     "objective",
+    "scene",
     "player",
     "enemy",
     "difficulty",
@@ -83,17 +106,53 @@ const gameSpecJsonSchema = {
   ],
 } as const;
 
+function buildAgentTrace(gameSpec: ReturnType<typeof sanitizeGameSpec>["gameSpec"], source: "managed-agent" | "fallback") {
+  const objectList = gameSpec.scene.objects.join(", ");
+  return [
+    {
+      title: source === "managed-agent" ? "Managed agent invoked" : "Local fallback invoked",
+      detail: source === "managed-agent"
+        ? "Antigravity analyzed the uploaded image and optional prompt in a remote managed environment."
+        : "The managed agent was unavailable, so Snapcade used a deterministic local game template.",
+      status: "complete",
+    },
+    {
+      title: "Scene understood",
+      detail: gameSpec.scene.summary,
+      status: "complete",
+    },
+    {
+      title: "Prompt generated",
+      detail: gameSpec.scene.prompt,
+      status: "complete",
+    },
+    {
+      title: "Game grounded in photo",
+      detail: `Runtime tokens: ${objectList}`,
+      status: "complete",
+    },
+    {
+      title: "GameSpec validated",
+      detail: `${gameSpec.template} game, difficulty ${gameSpec.difficulty}, ${gameSpec.durationSeconds} seconds.`,
+      status: "complete",
+    },
+  ];
+}
+
 function safeFallback(prompt: string, warning: string) {
   const { gameSpec } = sanitizeGameSpec({
     ...createGameSpecFromPrompt(prompt),
-    objective: prompt,
+    objective: prompt || undefined,
   });
+  const agentTrace = buildAgentTrace(gameSpec, "fallback");
 
   return Response.json({
     source: "fallback",
     gameSpec,
+    suggestedPrompt: gameSpec.scene.prompt,
     warnings: [warning],
-    steps: ["Prompt classified", `${gameSpec.template} template selected`, "Playable game prepared"],
+    steps: agentTrace.map((step) => step.title),
+    agentTrace,
   });
 }
 
@@ -109,8 +168,8 @@ export async function POST(request: Request) {
   const rawPrompt = formData.get("prompt");
   const prompt = typeof rawPrompt === "string" ? rawPrompt.trim().slice(0, 300) : "";
 
-  if (!(image instanceof File) || !prompt) {
-    return Response.json({ error: "An image and prompt are required." }, { status: 400 });
+  if (!(image instanceof File)) {
+    return Response.json({ error: "An image is required." }, { status: 400 });
   }
   if (!SUPPORTED_IMAGE_TYPES.has(image.type)) {
     return Response.json({ error: "Use a JPEG, PNG, or WebP image." }, { status: 415 });
@@ -130,9 +189,9 @@ export async function POST(request: Request) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   const instruction = `
-Create a playable mini-game configuration from the user's request.
+Create a playable mini-game configuration from the uploaded photo.
 
-User request: ${prompt}
+Optional user request: ${prompt || "(none; generate the prompt from the photo)"}
 
 Allowed templates:
 - fish-eat: big-fish-eats-small-fish evolution game.
@@ -146,8 +205,13 @@ Allowed templates:
 - dodge: photo-object dodge/survival game.
 
 Rules:
-- Choose the template that best matches the user's request. Do not default to dodge unless the user asks for dodging/survival.
-- Prefer cyberpunk/neon visual language in title, colors, and objective when the user asks for it.
+- Generate all user-facing text in English.
+- Treat the photo as the source of truth. If the user request is empty, create scene.prompt from the visible objects, setting, and mood of the photo.
+- Choose the template that best matches the user's request when it is explicit; otherwise choose the template that fits the photo. Do not default to dodge unless dodging/survival is appropriate.
+- Make the game visibly connected to the uploaded photo. scene.objects must be concrete, visible photo objects, not generic icons.
+- Title, objective, player label, enemy label, scene.summary, and scene.prompt should mention or adapt the photo setting.
+- For link-match, scene.objects should be matchable labels from the photo, such as monitor, keyboard, mug, notebook, chair, or lamp in an office scene.
+- Prefer cyberpunk/neon visual language in title, colors, and objective.
 - For fish-eat/link-match/oracle/farming/racing/tower-defense/dress-up/bubble-pop, set player.box2d and enemy.box2d to null.
 - For dodge only, you may choose visible photo objects and return normalized [ymin, xmin, ymax, xmax] boxes when confident; otherwise return null.
 - durationSeconds should match the game style: 90 for timed arcade games, 120 for farming/tower-defense/bubble-pop, 300 for oracle.
@@ -174,18 +238,21 @@ Rules:
     const hardTimeout = new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
         controller.abort();
-        reject(new Error("Gemini request timed out"));
+        reject(new Error("Managed agent request timed out"));
       }, GEMINI_TIMEOUT_MS);
     });
 
     const interaction = await Promise.race([requestPromise, hardTimeout]);
 
     const { gameSpec, warnings } = sanitizeGameSpec(interaction.output_text ?? "");
+    const agentTrace = buildAgentTrace(gameSpec, "managed-agent");
     return Response.json({
       source: "managed-agent",
       gameSpec,
+      suggestedPrompt: gameSpec.scene.prompt,
       warnings,
-      steps: ["Managed agent analyzed prompt and image", `${gameSpec.template} template selected`, "Game configuration validated"],
+      steps: agentTrace.map((step) => step.title),
+      agentTrace,
     });
   } catch (error) {
     const timedOut = controller.signal.aborted;

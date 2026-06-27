@@ -12,8 +12,14 @@ test("invalid JSON returns a valid default game", () => {
 test("markdown JSON, numbers, colors and text are normalized", () => {
   const result = sanitizeGameSpec(`\`\`\`json
   {
+    "template": "dodge",
     "title": "  Tiny\\nGame  ",
     "objective": "Survive",
+    "scene": {
+      "summary": "  Office desk\\nwith laptop  ",
+      "prompt": "Turn the desk photo into a survival game",
+      "objects": ["laptop", "laptop", "coffee mug!", 42, "keyboard"]
+    },
     "difficulty": 99,
     "durationSeconds": "4",
     "player": {"label": "laptop", "box2d": [-20, 10, 50, 45]},
@@ -28,6 +34,10 @@ test("markdown JSON, numbers, colors and text are normalized", () => {
   assert.deepEqual(result.gameSpec.player.box2d, [0, 0, 60, 60]);
   assert.equal(result.gameSpec.theme.primaryColor, "#ABCDEF");
   assert.equal(result.gameSpec.theme.backgroundTint, "#11100F");
+  assert.equal(result.gameSpec.scene.summary, "Office desk with laptop");
+  assert.equal(result.gameSpec.scene.prompt, "Turn the desk photo into a survival game");
+  assert.deepEqual(result.gameSpec.scene.objects.slice(0, 3), ["laptop", "coffee mug", "keyboard"]);
+  assert.equal(result.gameSpec.scene.objects.length, 6);
 });
 
 test("reversed and overlapping boxes cannot crash the runtime", () => {
@@ -76,5 +86,23 @@ test("prompt text can drive a sanitized non-dodge template", () => {
   });
   assert.equal(result.gameSpec.template, "tower-defense");
   assert.equal(result.gameSpec.durationSeconds, 300);
+  assert.equal(gameSpecSchema.safeParse(result.gameSpec).success, true);
+});
+
+test("scene metadata grounds generated games in photo objects", () => {
+  const result = sanitizeGameSpec({
+    template: "link-match",
+    title: "Office Object Match",
+    objective: "Connect matching objects from the office photo",
+    scene: {
+      summary: "A desk with a monitor, keyboard, notebook, and mug.",
+      prompt: "Create a link-match game using objects from this office photo.",
+      objects: ["monitor", "keyboard", "notebook", "coffee mug", "desk lamp", "office chair"],
+    },
+  });
+
+  assert.equal(result.gameSpec.template, "link-match");
+  assert.equal(result.gameSpec.scene.summary, "A desk with a monitor, keyboard, notebook, and mug.");
+  assert.deepEqual(result.gameSpec.scene.objects, ["monitor", "keyboard", "notebook", "coffee mug", "desk lamp", "office chair"]);
   assert.equal(gameSpecSchema.safeParse(result.gameSpec).success, true);
 });

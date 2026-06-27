@@ -395,8 +395,27 @@ html, body {
 .stepper-card-title {
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: 24px;
   color: var(--ink);
+}
+
+.stepper-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.agent-source-badge {
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #bbf7d0;
+  background: rgba(16, 185, 129, 0.08);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .stepper-container {
@@ -431,7 +450,7 @@ html, body {
   gap: 20px;
   position: relative;
   z-index: 3;
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 .stepper-step:last-child {
@@ -457,6 +476,13 @@ html, body {
   border-color: var(--acid-color);
   color: var(--acid-color);
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.stepper-step.error .stepper-icon-circle {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: #ef4444;
+  color: #fecaca;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
 
 .stepper-step.active .stepper-icon-circle {
@@ -496,7 +522,7 @@ html, body {
   color: var(--muted);
   margin-top: 4px;
   line-height: 1.4;
-  max-width: 320px;
+  max-width: 430px;
 }
 
 /* Play View Layout */
