@@ -29,7 +29,14 @@ const WIDTH = 720;
 const HEIGHT = 510;
 const PLAYER_SIZE = 58;
 const PLAYER_Y = HEIGHT - 82;
-export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec }) {
+
+interface DodgeGameProps {
+  imageUrl: string;
+  spec: GameSpec;
+  onExit: () => void;
+}
+
+export function DodgeGame({ imageUrl, spec, onExit }: DodgeGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -88,19 +95,19 @@ export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec
       const sourceHeight = HEIGHT / scale;
       const sourceX = (image.width - sourceWidth) / 2;
       const sourceY = (image.height - sourceHeight) / 2;
-      context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, WIDTH, HEIGHT);
+      
+      // Save state, draw blurred background and restore to avoid clipping issues
+      context.save();
+      context.filter = "blur(12px) brightness(0.6)";
+      context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, -20, -20, WIDTH + 40, HEIGHT + 40);
+      context.restore();
     } else {
-      context.fillStyle = "#26231f";
+      context.fillStyle = "#0c0b11";
       context.fillRect(0, 0, WIDTH, HEIGHT);
     }
 
-    const gradient = context.createLinearGradient(0, 0, 0, HEIGHT);
-    gradient.addColorStop(0, "rgba(12, 11, 10, .42)");
-    gradient.addColorStop(1, "rgba(12, 11, 10, .78)");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, WIDTH, HEIGHT);
-
-    context.strokeStyle = "rgba(255,255,255,.08)";
+    // Subtle neon grid style
+    context.strokeStyle = "rgba(255, 255, 255, .04)";
     context.lineWidth = 1;
     for (let x = 0; x <= WIDTH; x += 48) {
       context.beginPath();
@@ -126,9 +133,9 @@ export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec
     if (isInvincible && Math.floor(Date.now() / 80) % 2 === 0) return;
     context.save();
     context.translate(x + PLAYER_SIZE / 2, PLAYER_Y + PLAYER_SIZE / 2);
-    context.shadowColor = "#d9ff43";
+    context.shadowColor = "#34d399";
     context.shadowBlur = 22;
-    context.fillStyle = "#d9ff43";
+    context.fillStyle = "#34d399";
     context.fillRect(-PLAYER_SIZE / 2, -PLAYER_SIZE / 2, PLAYER_SIZE, PLAYER_SIZE);
     context.shadowBlur = 0;
     const image = imageRef.current;
@@ -149,11 +156,11 @@ export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec
         PLAYER_SIZE - 8,
       );
     } else {
-      context.fillStyle = "#11100f";
+      context.fillStyle = "#0c0b11";
       context.fillRect(-20, -15, 40, 26);
       context.fillStyle = spec.theme.primaryColor;
       context.fillRect(-16, -11, 32, 18);
-      context.fillStyle = "#11100f";
+      context.fillStyle = "#0c0b11";
       context.fillRect(-26, 15, 52, 7);
     }
     context.restore();
@@ -311,18 +318,87 @@ export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec
         aria-label="Dodge game stage"
       />
 
-      <div className="game-hud">
-        <span>HP {"●".repeat(hp)}{"○".repeat(3 - hp)}</span>
-        <strong>{seconds}s</strong>
-        <span>DODGE: {spec.enemy.label.toUpperCase()}</span>
+      {/* Clean Premium HUD Overlay */}
+      <div className="custom-game-hud">
+        <div className="custom-hud-timer">
+          {String(seconds).padStart(2, "0")}
+        </div>
+        <div className="custom-hud-lives">
+          {[...Array(3)].map((_, i) => (
+            <span
+              key={i}
+              className={`custom-heart-icon ${i >= hp ? "empty" : ""}`}
+            >
+              ♥
+            </span>
+          ))}
+        </div>
       </div>
 
       {phase !== "running" && (
         <div className={`game-overlay ${phase}`}>
-          <small>{phase === "ready" ? "SCENE LOCKED" : phase === "won" ? "CHALLENGE COMPLETE" : "SYSTEM CRASHED"}</small>
-          <h2>{phase === "ready" ? spec.title : phase === "won" ? "You survived reality." : `${spec.enemy.label} won.`}</h2>
-          <p>{phase === "ready" ? `Move with ← → or drag. Survive for ${spec.durationSeconds} seconds.` : phase === "won" ? "Your scene is officially playable." : `Replay it. This time, protect the ${spec.player.label}.`}</p>
-          <button type="button" onClick={startGame}>{phase === "ready" ? "Start game" : "Play again"}<span>→</span></button>
+          <div className="game-overlay-card">
+            <small className="overlay-eyebrow">
+              {phase === "ready"
+                ? "SCENE LOCKED"
+                : phase === "won"
+                ? "CHALLENGE COMPLETE"
+                : "SYSTEM CRASHED"}
+            </small>
+            <h2 className="overlay-title">
+              {phase === "ready"
+                ? "Ready?"
+                : phase === "won"
+                ? "Victory!"
+                : `${spec.enemy.label} won`}
+            </h2>
+            <div className="overlay-subtitle">
+              {phase === "ready" ? spec.objective : spec.title}
+            </div>
+            <p className="overlay-description">
+              {phase === "ready"
+                ? `Move with ← → or drag. Survive for ${spec.durationSeconds} seconds.`
+                : phase === "won"
+                ? "Your custom dodge game has been successfully generated from the image."
+                : `Replay it. This time, protect the ${spec.player.label}.`}
+            </p>
+            <div className="overlay-buttons-row">
+              {phase === "ready" ? (
+                <button type="button" className="overlay-btn-blue" style={{ width: "100%" }} onClick={startGame}>
+                  Start Game
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="overlay-btn-blue" onClick={startGame}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      style={{ width: "16px", height: "16px" }}
+                    >
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Replay
+                  </button>
+                  <button type="button" className="overlay-btn-green" onClick={onExit}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ width: "14px", height: "14px" }}
+                    >
+                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                    </svg>
+                    Generate New Game
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

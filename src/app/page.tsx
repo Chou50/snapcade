@@ -6,13 +6,14 @@ import { SceneObjectPicker } from "@/components/SceneObjectPicker";
 import { BoundingBox, DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
 
 const EXAMPLE_PROMPTS = [
-  "I control the laptop. Make the coffee cup the enemy.",
+  "Control the laptop to dodge falling coffee cups",
   "Turn this desk into a 10-second survival game.",
   "Let me dodge everything except the blue object.",
 ];
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [viewMode, setViewMode] = useState<"setup" | "play">("setup");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
@@ -26,17 +27,22 @@ export default function Home() {
   const [generationSource, setGenerationSource] = useState<"gemini" | "fallback" | "demo" | null>(null);
   const [generationNotice, setGenerationNotice] = useState("");
 
+  // Stepper Loading State (0: idle/none, 1: analyzing, 2: detecting, 3: building, 4: ready)
+  const [currentStep, setCurrentStep] = useState<number>(0);
+  const stepTimer1 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stepTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     return () => {
       if (imageUrl) URL.revokeObjectURL(imageUrl);
+      if (stepTimer1.current) clearTimeout(stepTimer1.current);
+      if (stepTimer2.current) clearTimeout(stepTimer2.current);
     };
   }, [imageUrl]);
 
   async function loadFile(file?: File) {
     if (!file) return;
 
-    // iPhone photos are HEIC. Chrome can't render HEIC in <img>/canvas and often
-    // reports an empty MIME type, so detect by type OR extension and convert to JPEG.
     const lowerName = file.name.toLowerCase();
     const isHeic =
       file.type === "image/heic" ||
@@ -78,13 +84,14 @@ export default function Home() {
     setSelectedPlayerBox(null);
     setGenerationSource(null);
     setGenerationNotice("");
+    setCurrentStep(0);
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     loadFile(event.target.files?.[0]);
   }
 
-  function handleDrop(event: DragEvent<HTMLButtonElement>) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
     loadFile(event.dataTransfer.files?.[0]);
@@ -102,6 +109,7 @@ export default function Home() {
     setSelectedPlayerBox(null);
     setGenerationSource("demo");
     setGenerationNotice("");
+    setCurrentStep(0);
   }
 
   function createBaseSpec(includeDemoBoxes: boolean) {
@@ -133,6 +141,7 @@ export default function Home() {
     if (safeSpec.player.box2d && safeSpec.enemy.box2d) {
       setSelectionTarget(null);
       setGameReady(true);
+      setCurrentStep(4);
       return;
     }
     setSelectedPlayerBox(null);
@@ -156,6 +165,19 @@ export default function Home() {
     setGameReady(false);
     setSelectionTarget(null);
     setGenerationNotice("");
+    setCurrentStep(1);
+
+    // Simulate stepping progression
+    if (stepTimer1.current) clearTimeout(stepTimer1.current);
+    if (stepTimer2.current) clearTimeout(stepTimer2.current);
+
+    stepTimer1.current = setTimeout(() => {
+      setCurrentStep(2);
+    }, 1200);
+
+    stepTimer2.current = setTimeout(() => {
+      setCurrentStep(3);
+    }, 2800);
 
     try {
       const formData = new FormData();
@@ -199,6 +221,7 @@ export default function Home() {
       setGameSpec(safeSpec);
       setSelectionTarget(null);
       setGameReady(true);
+      setCurrentStep(4);
     }
   }
 
@@ -206,128 +229,274 @@ export default function Home() {
     setGameSpec(createBaseSpec(false));
     setSelectionTarget(null);
     setGameReady(true);
+    setCurrentStep(4);
   }
 
+  // Returns progress height of the stepper bar
+  const getProgressHeight = () => {
+    if (currentStep <= 1) return "0%";
+    if (currentStep === 2) return "33%";
+    if (currentStep === 3) return "66%";
+    return "100%";
+  };
+
   return (
-    <main>
-      <nav className="nav shell">
-        <a className="brand" href="#top" aria-label="Snapcade home">
-          <span className="brand-mark" aria-hidden="true">SC</span>
-          <span>Snapcade</span>
-        </a>
-        <div className="status-pill"><span /> Gemini powered</div>
-      </nav>
-
-      <section id="top" className="hero shell">
-        <div className="eyebrow">REALITY, REMIXED</div>
-        <h1>Turn this moment<br />into a <em>playable game.</em></h1>
-        <p>Upload what you see. Describe the challenge. Play it seconds later.</p>
-      </section>
-
-      <section className="studio shell" aria-label="Game creation studio">
-        <div className="control-panel">
-          <div className="step-heading">
-            <span>01</span>
-            <div><h2>Show us your world</h2><p>Take a photo or upload one.</p></div>
-          </div>
-
-          <button
-            className={`dropzone ${dragging ? "is-dragging" : ""} ${imageUrl ? "has-image" : ""}`}
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            onDragEnter={() => setDragging(true)}
-            onDragLeave={() => setDragging(false)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDrop}
-          >
-            {imageUrl ? (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* Navigation Header */}
+      <nav className="nav-header">
+        <div className="shell" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <a className="brand-container" href="#top" onClick={() => setViewMode("setup")}>
+            {viewMode === "setup" ? (
+              <span className="brand-text">Scene2Game</span>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span className="brand-text" style={{ fontSize: "24px" }}>S2G</span>
+                <span className="logo-icon-container" style={{ transform: "translateY(2px)" }}>
+                  <svg
+                    className="logo-gear"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" />
+                  </svg>
+                </span>
+              </div>
+            )}
+          </a>
+          <div className="nav-actions">
+            {viewMode === "setup" ? (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="Uploaded scene preview" />
-                <span className="replace-image">Replace image</span>
+                <span className="nav-link-text">Google Hackathon Showcase</span>
+                <button type="button" className="collection-btn">Collection</button>
+                <button
+                  type="button"
+                  className="play-game-btn"
+                  disabled={!gameReady}
+                  onClick={() => setViewMode("play")}
+                >
+                  Play Game
+                </button>
               </>
             ) : (
-              <>
-                <span className="upload-icon" aria-hidden="true">↗</span>
-                <strong>Drop a scene here</strong>
-                <span>or click to choose an image</span>
-                <small>PNG, JPG or WEBP · up to 10 MB</small>
-              </>
+              <span className="nav-link-text">Google Hackathon Showcase</span>
             )}
-          </button>
-          <input ref={inputRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif" onChange={handleFileChange} />
-          <div className="upload-meta">
-            <span>{fileName ? `Selected: ${fileName}` : "No scene selected"}</span>
-            <div>
-              {imageUrl && <button type="button" onClick={startManualSelection}>Pick objects</button>}
-              <button type="button" onClick={loadDemoScene}>Use demo scene</button>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="avatar-img" src="/avatar.jpg" alt="User avatar" />
           </div>
-
-          <div className="divider" />
-
-          <div className="step-heading">
-            <span>02</span>
-            <div><h2>Direct the action</h2><p>Tell us who you are and what to dodge.</p></div>
-          </div>
-          <label className="prompt-field">
-            <span>YOUR GAME PROMPT</span>
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={300} />
-            <small>{prompt.length}/300</small>
-          </label>
-          <div className="prompt-examples">
-            {EXAMPLE_PROMPTS.map((example, index) => (
-              <button type="button" key={example} onClick={() => setPrompt(example)}>Try #{index + 1}</button>
-            ))}
-          </div>
-          <button className="generate-button" type="button" disabled={!imageUrl || !prompt.trim() || isGenerating} onClick={generateGame}>
-            <span>{isGenerating ? "Analyzing your scene…" : "Generate my game"}</span><span aria-hidden="true">→</span>
-          </button>
-          {generationNotice && <p className="generation-notice">{generationNotice}</p>}
         </div>
+      </nav>
 
-        <div className="preview-panel">
-          <div className="preview-bar">
-            <div><i /><i /><i /></div>
-            <span>LIVE PREVIEW</span>
-            <b>{isGenerating ? "ANALYZING" : selectionTarget ? "SELECTING" : gameReady ? generationSource === "gemini" ? "AI PLAYABLE" : "PLAYABLE" : "READY"}</b>
-          </div>
-          {isGenerating ? (
-            <div className="generation-progress">
-              <div className="scan-line" />
-              <span className="analysis-symbol">✦</span>
-              <small>GEMINI VISION</small>
-              <h2>Reading your reality…</h2>
-              <div className="analysis-steps">
-                <span className="active">Analyzing scene</span>
-                <span>Locating objects</span>
-                <span>Validating game</span>
+      {/* Main Area based on viewMode */}
+      {viewMode === "setup" ? (
+        <main className="shell" style={{ flex: 1, padding: "20px 0" }}>
+          <div className="dashboard-grid">
+            {/* Left Column: Image Upload & Editor */}
+            <div className={`neon-card ${imageUrl ? "active-glow" : ""}`}>
+              <div
+                className={`upload-inner-border ${dragging ? "is-dragging" : ""}`}
+                onDragEnter={() => setDragging(true)}
+                onDragLeave={() => setDragging(false)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => inputRef.current?.click()}
+              >
+                {imageUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={imageUrl} alt="Uploaded scene preview" />
+                ) : (
+                  <div className="upload-placeholder-content">
+                    <span className="upload-icon-neon">↗</span>
+                    <strong className="upload-title">Drop your scene photo here</strong>
+                    <span className="upload-desc">or click to browse local files</span>
+                  </div>
+                )}
+                <input
+                  ref={inputRef}
+                  hidden
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif"
+                  onChange={handleFileChange}
+                />
               </div>
-            </div>
-          ) : selectionTarget && imageUrl ? (
-            <SceneObjectPicker
-              imageUrl={imageUrl}
-              target={selectionTarget}
-              playerBox={selectedPlayerBox}
-              onSelect={selectObject}
-              onUseDefaults={useDefaultAssets}
-            />
-          ) : gameReady && imageUrl ? (
-            <DodgeGame imageUrl={imageUrl} spec={gameSpec} />
-          ) : <div className="game-placeholder">
-            <div className="grid-glow" />
-            <div className="placeholder-orbit"><span>✦</span></div>
-            <h2>Your world becomes<br />the playground.</h2>
-            <p>Add a scene and prompt to generate<br />your first playable moment.</p>
-            <div className="runtime-badge">9 SEC GAME · ZERO SETUP</div>
-          </div>}
-        </div>
-      </section>
 
-      <footer className="shell">
-        <span>BUILT WITH GEMINI + GOOGLE CLOUD</span>
-        <span>FROM REALITY TO PLAY</span>
-      </footer>
-    </main>
+              {fileName && <div className="upload-filename">Uploaded Photo: {fileName}</div>}
+
+              {/* Prompt Textarea */}
+              <div className="prompt-textarea-container">
+                <span className="prompt-label">Your Game Prompt</span>
+                <textarea
+                  className="prompt-textarea"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  maxLength={300}
+                />
+                <span className="prompt-char-count">{prompt.length}/300</span>
+              </div>
+
+              <div className="prompt-examples-row">
+                {EXAMPLE_PROMPTS.map((example) => (
+                  <button
+                    type="button"
+                    key={example}
+                    className="prompt-example-pill"
+                    onClick={() => setPrompt(example)}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="action-buttons-group">
+                <button
+                  type="button"
+                  className="primary-neon-btn"
+                  disabled={!imageUrl || !prompt.trim() || isGenerating}
+                  onClick={generateGame}
+                >
+                  <span>{isGenerating ? "Analyzing scene…" : "Generate Game"}</span>
+                </button>
+                {imageUrl && (
+                  <button type="button" className="secondary-neon-btn" onClick={startManualSelection}>
+                    Pick Objects
+                  </button>
+                )}
+                <button type="button" className="secondary-neon-btn" onClick={loadDemoScene}>
+                  Use Demo
+                </button>
+              </div>
+
+              {generationNotice && (
+                <p className="generation-notice" style={{ marginTop: "14px", color: "var(--gold-color)" }}>
+                  {generationNotice}
+                </p>
+              )}
+            </div>
+
+            {/* Right Column: AI Stepper / Preview & Manual Selector */}
+            <div className="neon-card" style={{ display: "flex", flexDirection: "column" }}>
+              {selectionTarget && imageUrl ? (
+                <div style={{ flex: 1 }}>
+                  <SceneObjectPicker
+                    imageUrl={imageUrl}
+                    target={selectionTarget}
+                    playerBox={selectedPlayerBox}
+                    onSelect={selectObject}
+                    onUseDefaults={useDefaultAssets}
+                  />
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <h3 className="stepper-card-title">AI Game Generation Status</h3>
+                  <div className="stepper-container">
+                    <div className="stepper-line-connector" />
+                    <div
+                      className="stepper-line-connector-progress"
+                      style={{ height: getProgressHeight() }}
+                    />
+
+                    {/* Step 1: Analyzing Scene */}
+                    <div
+                      className={`stepper-step ${
+                        currentStep > 1
+                          ? "completed"
+                          : currentStep === 1
+                          ? "active"
+                          : "pending"
+                      }`}
+                    >
+                      <div className="stepper-icon-circle">
+                        {currentStep > 1 ? "✓" : "1"}
+                      </div>
+                      <div className="stepper-text-content">
+                        <span className="stepper-label">Analyzing Scene</span>
+                      </div>
+                    </div>
+
+                    {/* Step 2: Detecting Objects */}
+                    <div
+                      className={`stepper-step ${
+                        currentStep > 2
+                          ? "completed"
+                          : currentStep === 2
+                          ? "active"
+                          : "pending"
+                      }`}
+                    >
+                      <div className="stepper-icon-circle">
+                        {currentStep > 2 ? "✓" : "2"}
+                      </div>
+                      <div className="stepper-text-content">
+                        <span className="stepper-label">Detecting Objects</span>
+                      </div>
+                    </div>
+
+                    {/* Step 3: Building Game */}
+                    <div
+                      className={`stepper-step ${
+                        currentStep > 3
+                          ? "completed"
+                          : currentStep === 3
+                          ? "active"
+                          : "pending"
+                      }`}
+                    >
+                      <div className="stepper-icon-circle">
+                        {currentStep > 3 ? "✓" : "3"}
+                      </div>
+                      <div className="stepper-text-content">
+                        <span className="stepper-label">Building Game</span>
+                      </div>
+                    </div>
+
+                    {/* Step 4: Ready */}
+                    <div
+                      className={`stepper-step ${
+                        currentStep === 4 ? "active completed" : "pending"
+                      }`}
+                    >
+                      <div className="stepper-icon-circle">
+                        {currentStep === 4 ? "✓" : "4"}
+                      </div>
+                      <div className="stepper-text-content">
+                        <span className="stepper-label">Ready</span>
+                        {currentStep === 4 && (
+                          <span className="stepper-desc">
+                            Your custom dodge game has been successfully generated from the image.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      ) : (
+        /* Play View Mode */
+        <div className="play-workspace">
+          <div className="game-arena-wrapper">
+            <div className="game-top-meta">
+              <div className="game-meta-left">
+                <span className="game-meta-title">Mini-Game: {gameSpec.title}</span>
+                <span className="game-meta-stats">
+                  Difficulty: {gameSpec.difficulty} | Goal: {gameSpec.objective}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="escape-btn"
+                onClick={() => setViewMode("setup")}
+              >
+                Escape to Main
+              </button>
+            </div>
+            {imageUrl && <DodgeGame imageUrl={imageUrl} spec={gameSpec} onExit={() => setViewMode("setup")} />}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
