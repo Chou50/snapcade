@@ -136,7 +136,7 @@ Rules:
   try {
     const requestPromise = client.interactions.create(
         {
-          model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+          model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
           input: [
             { type: "text", text: instruction },
             { type: "image", data: imageData, mime_type: image.type },

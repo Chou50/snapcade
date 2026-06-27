@@ -32,17 +32,47 @@ export default function Home() {
     };
   }, [imageUrl]);
 
-  function loadFile(file?: File) {
-    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+  async function loadFile(file?: File) {
+    if (!file) return;
+
+    // iPhone photos are HEIC. Chrome can't render HEIC in <img>/canvas and often
+    // reports an empty MIME type, so detect by type OR extension and convert to JPEG.
+    const lowerName = file.name.toLowerCase();
+    const isHeic =
+      file.type === "image/heic" ||
+      file.type === "image/heif" ||
+      lowerName.endsWith(".heic") ||
+      lowerName.endsWith(".heif");
+
+    let workingFile = file;
+    if (isHeic) {
+      setGenerationNotice("Converting HEIC photo…");
+      try {
+        const heic2any = (await import("heic2any")).default;
+        const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        workingFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), {
+          type: "image/jpeg",
+        });
+      } catch {
+        setGenerationNotice("Could not read this HEIC photo. Try a JPEG or PNG.");
+        return;
+      }
+    }
+
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(workingFile.type) ||
+      workingFile.size > 10 * 1024 * 1024
+    ) {
       setGenerationNotice("Choose a JPEG, PNG, or WebP image up to 10 MB.");
       return;
     }
     setImageUrl((current) => {
       if (current) URL.revokeObjectURL(current);
-      return URL.createObjectURL(file);
+      return URL.createObjectURL(workingFile);
     });
     setFileName(file.name);
-    setImageFile(file);
+    setImageFile(workingFile);
     setGameReady(false);
     setSelectionTarget(null);
     setSelectedPlayerBox(null);
@@ -225,7 +255,7 @@ export default function Home() {
               </>
             )}
           </button>
-          <input ref={inputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} />
+          <input ref={inputRef} hidden type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif" onChange={handleFileChange} />
           <div className="upload-meta">
             <span>{fileName ? `Selected: ${fileName}` : "No scene selected"}</span>
             <div>
