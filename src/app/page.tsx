@@ -20,22 +20,22 @@ const EXAMPLE_PROMPTS = [
 const IDLE_AGENT_TRACE: AgentTraceStep[] = [
   {
     title: "Waiting for photo",
-    detail: "Upload a scene. The managed agent will infer the game prompt from the image.",
+    detail: "Upload a scene. Gemini Vision will inspect it before the game agent runs.",
     status: "pending",
   },
   {
-    title: "Scene understanding",
-    detail: "The agent will identify visible objects, setting, and usable game tokens.",
+    title: "Gemini Vision analysis",
+    detail: "Gemini identifies visible objects, setting, mood, and usable game tokens.",
     status: "pending",
   },
   {
-    title: "Prompt generation",
-    detail: "The English game prompt will be generated automatically from the photo.",
+    title: "Gemini prompt generation",
+    detail: "An English implementation prompt will be generated automatically from the photo.",
     status: "pending",
   },
   {
-    title: "Game grounding",
-    detail: "The selected template will reuse photo-derived objects inside the playable runtime.",
+    title: "Managed agent implementation",
+    detail: "Antigravity turns the Gemini prompt into a structured playable GameSpec.",
     status: "pending",
   },
   {
@@ -48,22 +48,22 @@ const IDLE_AGENT_TRACE: AgentTraceStep[] = [
 const RUNNING_AGENT_TRACE: AgentTraceStep[] = [
   {
     title: "Photo submitted",
-    detail: "Uploading the scene and optional prompt to the managed agent.",
+    detail: "Uploading the scene and optional user request to Gemini.",
     status: "complete",
   },
   {
-    title: "Scene understanding",
+    title: "Gemini Vision analysis",
     detail: "Extracting setting, visible objects, and visual mood from the image.",
     status: "active",
   },
   {
-    title: "Prompt generation",
+    title: "Gemini prompt generation",
     detail: "Creating an English game prompt from the photo.",
     status: "pending",
   },
   {
-    title: "Game grounding",
-    detail: "Mapping photo objects into the selected game template.",
+    title: "Managed agent implementation",
+    detail: "Waiting for Antigravity to map the photo prompt into a selected game template.",
     status: "pending",
   },
   {
@@ -283,8 +283,8 @@ export default function Home() {
       setGenerationNotice(combinedWarnings[0] ?? "");
       setPrompt(result.suggestedPrompt ?? safeSpec.scene.prompt);
       setAgentTrace(result.agentTrace?.length ? result.agentTrace : [
-        { title: "Scene understood", detail: safeSpec.scene.summary, status: "complete" },
-        { title: "Prompt generated", detail: safeSpec.scene.prompt, status: "complete" },
+        { title: "Gemini Vision analysis", detail: safeSpec.scene.summary, status: "complete" },
+        { title: "Gemini prompt generation", detail: safeSpec.scene.prompt, status: "complete" },
         { title: "Game grounded", detail: `Runtime tokens: ${safeSpec.scene.objects.join(", ")}`, status: "complete" },
         { title: "GameSpec validation", detail: `${safeSpec.template} game is ready.`, status: "complete" },
       ]);
@@ -296,7 +296,7 @@ export default function Home() {
       setGameSpec(fallbackSpec);
       setPrompt(fallbackSpec.scene.prompt);
       setAgentTrace([
-        { title: "Managed agent unavailable", detail: "The request failed before a structured response was received.", status: "error" },
+        { title: "Gemini pipeline unavailable", detail: "The request failed before a structured response was received.", status: "error" },
         { title: "Local fallback selected", detail: fallbackSpec.scene.prompt, status: "complete" },
         { title: "GameSpec validation", detail: `${fallbackSpec.template} game is ready.`, status: "complete" },
       ]);
@@ -435,7 +435,7 @@ export default function Home() {
                   className="prompt-textarea"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="Leave this blank. The managed agent will generate an English game prompt from the photo."
+                  placeholder="Leave this blank. Gemini Vision will generate an English prompt from the photo, then the managed agent will implement it."
                   maxLength={300}
                 />
                 <span className="prompt-char-count">{prompt.length}/300</span>
@@ -462,7 +462,7 @@ export default function Home() {
                   disabled={!imageUrl || isGenerating}
                   onClick={generateGame}
                 >
-                  <span>{isGenerating ? "Analyzing scene…" : "Generate Game"}</span>
+                  <span>{isGenerating ? "Running Gemini pipeline…" : "Generate Game"}</span>
                 </button>
                 {imageUrl && (
                   <button type="button" className="secondary-neon-btn" onClick={startManualSelection}>

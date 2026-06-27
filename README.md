@@ -14,10 +14,11 @@ Set these values in `.env.local`:
 
 ```env
 GEMINI_API_KEY=your_key
+GEMINI_VISION_MODEL=gemini-3-flash-preview
 GEMINI_AGENT=antigravity-preview-05-2026
 ```
 
-The application never sends the API key to the browser. Game generation runs through the Gemini API Interactions API using the Antigravity managed agent. The user prompt is optional: the agent can generate an English game prompt from the uploaded image, return visible scene objects, and expose a reader-facing calculation trace. If the managed agent is unavailable, generation returns a safe `GameSpec` and keeps the app playable.
+The application never sends the API key to the browser. Game generation uses a two-stage Gemini pipeline: Gemini Vision first analyzes the uploaded image and generates an English game prompt from visible objects, then the Antigravity managed agent implements that prompt as a structured `GameSpec`. The user prompt is optional and acts as extra direction. The UI exposes this reader-facing calculation trace. If Gemini or the managed agent is unavailable, generation returns a safe `GameSpec` and keeps the app playable.
 
 ## Verification
 
@@ -36,9 +37,10 @@ Recommended production configuration:
 
 - Region: `asia-northeast1`
 - Public access enabled for the demo
+- `GEMINI_VISION_MODEL` supplied as a normal environment variable
 - `GEMINI_AGENT` supplied as a normal environment variable
 - `GEMINI_API_KEY` supplied from Google Secret Manager
-- Request timeout of at least 60 seconds; the application itself falls back after 15 seconds
+- Request timeout of at least 120 seconds; the application itself falls back after the staged Gemini pipeline timeouts
 
 Example deployment after the secret is configured:
 
@@ -47,7 +49,7 @@ gcloud run deploy snapcade \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated \
-  --set-env-vars GEMINI_AGENT=antigravity-preview-05-2026 \
+  --set-env-vars GEMINI_VISION_MODEL=gemini-3-flash-preview,GEMINI_AGENT=antigravity-preview-05-2026 \
   --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
-  --timeout 60
+  --timeout 120
 ```
