@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "next": "latest",
@@ -17,6 +18,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "tsx": "latest",
     "typescript": "latest"
   }
 }

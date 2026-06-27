@@ -1,6 +1,8 @@
 "use client";
 
 import { PointerEvent, useEffect, useRef, useState } from "react";
+import type { GameSpec } from "@/lib/game-spec";
+import { boxToSourceCrop } from "@/lib/image-crop";
 
 type Phase = "ready" | "running" | "won" | "lost";
 
@@ -27,9 +29,7 @@ const WIDTH = 720;
 const HEIGHT = 510;
 const PLAYER_SIZE = 58;
 const PLAYER_Y = HEIGHT - 82;
-const DURATION_MS = 9_000;
-
-export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string }) {
+export function DodgeGame({ imageUrl, spec }: { imageUrl: string; spec: GameSpec }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -38,7 +38,12 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
   const gameRef = useRef<GameState | null>(null);
   const [phase, setPhase] = useState<Phase>("ready");
   const [hp, setHp] = useState(3);
-  const [seconds, setSeconds] = useState(9);
+  const [seconds, setSeconds] = useState(spec.durationSeconds);
+  const difficulty = {
+    1: { spawnInterval: 850, baseSpeed: 0.16 },
+    2: { spawnInterval: 620, baseSpeed: 0.2 },
+    3: { spawnInterval: 450, baseSpeed: 0.25 },
+  }[spec.difficulty];
 
   useEffect(() => {
     const image = new Image();
@@ -126,12 +131,31 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
     context.fillStyle = "#d9ff43";
     context.fillRect(-PLAYER_SIZE / 2, -PLAYER_SIZE / 2, PLAYER_SIZE, PLAYER_SIZE);
     context.shadowBlur = 0;
-    context.fillStyle = "#11100f";
-    context.fillRect(-20, -15, 40, 26);
-    context.fillStyle = "#7758ff";
-    context.fillRect(-16, -11, 32, 18);
-    context.fillStyle = "#11100f";
-    context.fillRect(-26, 15, 52, 7);
+    const image = imageRef.current;
+    if (image && spec.player.box2d) {
+      const crop = boxToSourceCrop(spec.player.box2d, image.width, image.height);
+      context.beginPath();
+      context.rect(-PLAYER_SIZE / 2 + 4, -PLAYER_SIZE / 2 + 4, PLAYER_SIZE - 8, PLAYER_SIZE - 8);
+      context.clip();
+      context.drawImage(
+        image,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height,
+        -PLAYER_SIZE / 2 + 4,
+        -PLAYER_SIZE / 2 + 4,
+        PLAYER_SIZE - 8,
+        PLAYER_SIZE - 8,
+      );
+    } else {
+      context.fillStyle = "#11100f";
+      context.fillRect(-20, -15, 40, 26);
+      context.fillStyle = spec.theme.primaryColor;
+      context.fillRect(-16, -11, 32, 18);
+      context.fillStyle = "#11100f";
+      context.fillRect(-26, 15, 52, 7);
+    }
     context.restore();
   }
 
@@ -139,20 +163,39 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
     context.save();
     context.translate(enemy.x + enemy.size / 2, enemy.y + enemy.size / 2);
     context.rotate(enemy.rotation);
-    context.shadowColor = "rgba(119,88,255,.8)";
+    context.shadowColor = spec.theme.primaryColor;
     context.shadowBlur = 16;
     context.fillStyle = "#f5f0e5";
     context.fillRect(-enemy.size / 2, -enemy.size / 2, enemy.size, enemy.size);
     context.shadowBlur = 0;
-    context.fillStyle = "#7758ff";
-    context.beginPath();
-    context.ellipse(0, 4, enemy.size * .23, enemy.size * .29, 0, 0, Math.PI * 2);
-    context.fill();
-    context.strokeStyle = "#7758ff";
-    context.lineWidth = 5;
-    context.beginPath();
-    context.arc(enemy.size * .23, 3, enemy.size * .16, -Math.PI / 2, Math.PI / 2);
-    context.stroke();
+    const image = imageRef.current;
+    if (image && spec.enemy.box2d) {
+      const crop = boxToSourceCrop(spec.enemy.box2d, image.width, image.height);
+      context.beginPath();
+      context.rect(-enemy.size / 2 + 3, -enemy.size / 2 + 3, enemy.size - 6, enemy.size - 6);
+      context.clip();
+      context.drawImage(
+        image,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height,
+        -enemy.size / 2 + 3,
+        -enemy.size / 2 + 3,
+        enemy.size - 6,
+        enemy.size - 6,
+      );
+    } else {
+      context.fillStyle = spec.theme.primaryColor;
+      context.beginPath();
+      context.ellipse(0, 4, enemy.size * .23, enemy.size * .29, 0, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = spec.theme.primaryColor;
+      context.lineWidth = 5;
+      context.beginPath();
+      context.arc(enemy.size * .23, 3, enemy.size * .16, -Math.PI / 2, Math.PI / 2);
+      context.stroke();
+    }
     context.restore();
   }
 
@@ -178,19 +221,19 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
     const delta = Math.min(now - game.lastFrameAt, 34);
     game.lastFrameAt = now;
     const elapsed = now - game.startedAt;
-    const remaining = Math.max(0, DURATION_MS - elapsed);
+    const remaining = Math.max(0, spec.durationSeconds * 1000 - elapsed);
     setSeconds(Math.ceil(remaining / 1000));
 
     const direction = Number(keysRef.current.right) - Number(keysRef.current.left);
     game.playerX = Math.max(12, Math.min(WIDTH - PLAYER_SIZE - 12, game.playerX + direction * delta * .42));
 
-    if (now - game.lastSpawnAt >= 620) {
+    if (now - game.lastSpawnAt >= difficulty.spawnInterval) {
       const size = 46 + Math.random() * 16;
       game.enemies.push({
         x: 14 + Math.random() * (WIDTH - size - 28),
         y: -size,
         size,
-        speed: .2 + Math.random() * .08,
+        speed: difficulty.baseSpeed + Math.random() * .08,
         rotation: Math.random() * Math.PI,
         spin: (Math.random() - .5) * .004,
       });
@@ -241,7 +284,7 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
       enemies: [],
     };
     setHp(3);
-    setSeconds(9);
+    setSeconds(spec.durationSeconds);
     setPhase("running");
     phaseRef.current = "running";
     animationRef.current = requestAnimationFrame(tick);
@@ -271,14 +314,14 @@ export function DodgeGame({ imageUrl, title }: { imageUrl: string; title: string
       <div className="game-hud">
         <span>HP {"●".repeat(hp)}{"○".repeat(3 - hp)}</span>
         <strong>{seconds}s</strong>
-        <span>DODGE THE CUPS</span>
+        <span>DODGE: {spec.enemy.label.toUpperCase()}</span>
       </div>
 
       {phase !== "running" && (
         <div className={`game-overlay ${phase}`}>
           <small>{phase === "ready" ? "SCENE LOCKED" : phase === "won" ? "CHALLENGE COMPLETE" : "SYSTEM CRASHED"}</small>
-          <h2>{phase === "ready" ? title : phase === "won" ? "You survived reality." : "The coffee won."}</h2>
-          <p>{phase === "ready" ? "Move with ← → or drag. Survive for 9 seconds." : phase === "won" ? "Your scene is officially playable." : "Replay it. This time, protect the laptop."}</p>
+          <h2>{phase === "ready" ? spec.title : phase === "won" ? "You survived reality." : `${spec.enemy.label} won.`}</h2>
+          <p>{phase === "ready" ? `Move with ← → or drag. Survive for ${spec.durationSeconds} seconds.` : phase === "won" ? "Your scene is officially playable." : `Replay it. This time, protect the ${spec.player.label}.`}</p>
           <button type="button" onClick={startGame}>{phase === "ready" ? "Start game" : "Play again"}<span>→</span></button>
         </div>
       )}

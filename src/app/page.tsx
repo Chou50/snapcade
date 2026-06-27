@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { DodgeGame } from "@/components/DodgeGame";
+import { DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
 
 const EXAMPLE_PROMPTS = [
   "I control the laptop. Make the coffee cup the enemy.",
@@ -16,6 +17,7 @@ export default function Home() {
   const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[0]);
   const [dragging, setDragging] = useState(false);
   const [gameReady, setGameReady] = useState(false);
+  const [gameSpec, setGameSpec] = useState<GameSpec>(DEFAULT_GAME_SPEC);
 
   useEffect(() => {
     return () => {
@@ -50,6 +52,23 @@ export default function Home() {
     });
     setFileName("Tokyo build lab · demo scene");
     setGameReady(false);
+  }
+
+  function generateGame() {
+    const { gameSpec: safeSpec } = sanitizeGameSpec({
+      ...DEFAULT_GAME_SPEC,
+      objective: prompt,
+      player: {
+        ...DEFAULT_GAME_SPEC.player,
+        box2d: imageUrl === "/demo-scene.svg" ? [356, 296, 731, 713] : null,
+      },
+      enemy: {
+        ...DEFAULT_GAME_SPEC.enemy,
+        box2d: imageUrl === "/demo-scene.svg" ? [336, 142, 688, 321] : null,
+      },
+    });
+    setGameSpec(safeSpec);
+    setGameReady(true);
   }
 
   return (
@@ -121,7 +140,7 @@ export default function Home() {
               <button type="button" key={example} onClick={() => setPrompt(example)}>Try #{index + 1}</button>
             ))}
           </div>
-          <button className="generate-button" type="button" disabled={!imageUrl || !prompt.trim()} onClick={() => setGameReady(true)}>
+          <button className="generate-button" type="button" disabled={!imageUrl || !prompt.trim()} onClick={generateGame}>
             <span>Generate my game</span><span aria-hidden="true">→</span>
           </button>
         </div>
@@ -133,7 +152,7 @@ export default function Home() {
             <b>{gameReady ? "PLAYABLE" : "READY"}</b>
           </div>
           {gameReady && imageUrl ? (
-            <DodgeGame imageUrl={imageUrl} title="Coffee Break Crisis" />
+            <DodgeGame imageUrl={imageUrl} spec={gameSpec} />
           ) : <div className="game-placeholder">
             <div className="grid-glow" />
             <div className="placeholder-orbit"><span>✦</span></div>
