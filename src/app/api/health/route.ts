@@ -1,7 +1,7 @@
 export function GET() {
   return Response.json({
     status: "ok",
-    service: "scene2game",
+    service: "snapcade",
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
   });
 }

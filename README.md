@@ -1,4 +1,4 @@
-# Scene2Game
+# Snapcade
 
 Turn a photo of the current scene into a playable nine-second dodge game.
 
@@ -43,7 +43,7 @@ Recommended production configuration:
 Example deployment after the secret is configured:
 
 ```bash
-gcloud run deploy scene2game \
+gcloud run deploy snapcade \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated \

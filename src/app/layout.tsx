@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Scene2Game",
-  description: "Turn this exact moment into a playable game.",
+  title: "Snapcade — Turn reality into a game",
+  description: "Snap a scene. Turn it into a playable game in seconds.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

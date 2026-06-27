@@ -181,9 +181,9 @@ export default function Home() {
   return (
     <main>
       <nav className="nav shell">
-        <a className="brand" href="#top" aria-label="Scene2Game home">
-          <span className="brand-mark" aria-hidden="true">S2G</span>
-          <span>Scene2Game</span>
+        <a className="brand" href="#top" aria-label="Snapcade home">
+          <span className="brand-mark" aria-hidden="true">SC</span>
+          <span>Snapcade</span>
         </a>
         <div className="status-pill"><span /> Gemini powered</div>
       </nav>
