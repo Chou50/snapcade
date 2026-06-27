@@ -2,7 +2,8 @@
 
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { DodgeGame } from "@/components/DodgeGame";
-import { DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
+import { SceneObjectPicker } from "@/components/SceneObjectPicker";
+import { BoundingBox, DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
 
 const EXAMPLE_PROMPTS = [
   "I control the laptop. Make the coffee cup the enemy.",
@@ -13,11 +14,17 @@ const EXAMPLE_PROMPTS = [
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
   const [prompt, setPrompt] = useState(EXAMPLE_PROMPTS[0]);
   const [dragging, setDragging] = useState(false);
   const [gameReady, setGameReady] = useState(false);
   const [gameSpec, setGameSpec] = useState<GameSpec>(DEFAULT_GAME_SPEC);
+  const [selectionTarget, setSelectionTarget] = useState<"player" | "enemy" | null>(null);
+  const [selectedPlayerBox, setSelectedPlayerBox] = useState<BoundingBox | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationSource, setGenerationSource] = useState<"gemini" | "fallback" | "demo" | null>(null);
+  const [generationNotice, setGenerationNotice] = useState("");
 
   useEffect(() => {
     return () => {
@@ -26,13 +33,21 @@ export default function Home() {
   }, [imageUrl]);
 
   function loadFile(file?: File) {
-    if (!file || !file.type.startsWith("image/")) return;
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setGenerationNotice("Choose a JPEG, PNG, or WebP image up to 10 MB.");
+      return;
+    }
     setImageUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(file);
     });
     setFileName(file.name);
+    setImageFile(file);
     setGameReady(false);
+    setSelectionTarget(null);
+    setSelectedPlayerBox(null);
+    setGenerationSource(null);
+    setGenerationNotice("");
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -51,23 +66,115 @@ export default function Home() {
       return "/demo-scene.svg";
     });
     setFileName("Tokyo build lab · demo scene");
+    setImageFile(null);
     setGameReady(false);
+    setSelectionTarget(null);
+    setSelectedPlayerBox(null);
+    setGenerationSource("demo");
+    setGenerationNotice("");
   }
 
-  function generateGame() {
+  function createBaseSpec(includeDemoBoxes: boolean) {
     const { gameSpec: safeSpec } = sanitizeGameSpec({
       ...DEFAULT_GAME_SPEC,
       objective: prompt,
       player: {
         ...DEFAULT_GAME_SPEC.player,
-        box2d: imageUrl === "/demo-scene.svg" ? [356, 296, 731, 713] : null,
+        box2d: includeDemoBoxes ? [356, 296, 731, 713] : null,
       },
       enemy: {
         ...DEFAULT_GAME_SPEC.enemy,
-        box2d: imageUrl === "/demo-scene.svg" ? [336, 142, 688, 321] : null,
+        box2d: includeDemoBoxes ? [336, 142, 688, 321] : null,
       },
     });
+    return safeSpec;
+  }
+
+  function startManualSelection() {
+    if (!imageUrl) return;
+    setGameSpec(createBaseSpec(false));
+    setGameReady(false);
+    setSelectedPlayerBox(null);
+    setSelectionTarget("player");
+  }
+
+  function applyGeneratedSpec(safeSpec: GameSpec) {
     setGameSpec(safeSpec);
+    if (safeSpec.player.box2d && safeSpec.enemy.box2d) {
+      setSelectionTarget(null);
+      setGameReady(true);
+      return;
+    }
+    setSelectedPlayerBox(null);
+    setSelectionTarget("player");
+    setGameReady(false);
+  }
+
+  async function generateGame() {
+    if (!imageUrl) return;
+    if (imageUrl === "/demo-scene.svg") {
+      setGenerationSource("demo");
+      applyGeneratedSpec(createBaseSpec(true));
+      return;
+    }
+    if (!imageFile) {
+      startManualSelection();
+      return;
+    }
+
+    setIsGenerating(true);
+    setGameReady(false);
+    setSelectionTarget(null);
+    setGenerationNotice("");
+
+    try {
+      const formData = new FormData();
+      formData.append("image", imageFile);
+      formData.append("prompt", prompt.trim());
+      const response = await fetch("/api/generate", { method: "POST", body: formData });
+      if (!response.ok) throw new Error("Generation request failed");
+      const result = await response.json() as {
+        source?: "gemini" | "fallback";
+        gameSpec?: unknown;
+        warnings?: string[];
+      };
+      const { gameSpec: safeSpec, warnings } = sanitizeGameSpec(result.gameSpec);
+      const combinedWarnings = [...(result.warnings ?? []), ...warnings];
+      setGenerationSource(result.source ?? "fallback");
+      setGenerationNotice(combinedWarnings[0] ?? "");
+      applyGeneratedSpec(safeSpec);
+    } catch {
+      setGenerationSource("fallback");
+      setGenerationNotice("Generation was unavailable; safe selection mode enabled.");
+      setGameSpec(createBaseSpec(false));
+      setSelectedPlayerBox(null);
+      setSelectionTarget("player");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  function selectObject(box: BoundingBox) {
+    if (selectionTarget === "player") {
+      setSelectedPlayerBox(box);
+      setSelectionTarget("enemy");
+      return;
+    }
+    if (selectionTarget === "enemy") {
+      const { gameSpec: safeSpec } = sanitizeGameSpec({
+        ...gameSpec,
+        player: { ...gameSpec.player, box2d: selectedPlayerBox },
+        enemy: { ...gameSpec.enemy, box2d: box },
+      });
+      setGameSpec(safeSpec);
+      setSelectionTarget(null);
+      setGameReady(true);
+    }
+  }
+
+  function useDefaultAssets() {
+    setGameSpec(createBaseSpec(false));
+    setSelectionTarget(null);
     setGameReady(true);
   }
 
@@ -121,7 +228,10 @@ export default function Home() {
           <input ref={inputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} />
           <div className="upload-meta">
             <span>{fileName ? `Selected: ${fileName}` : "No scene selected"}</span>
-            <button type="button" onClick={loadDemoScene}>Use demo scene</button>
+            <div>
+              {imageUrl && <button type="button" onClick={startManualSelection}>Pick objects</button>}
+              <button type="button" onClick={loadDemoScene}>Use demo scene</button>
+            </div>
           </div>
 
           <div className="divider" />
@@ -140,18 +250,39 @@ export default function Home() {
               <button type="button" key={example} onClick={() => setPrompt(example)}>Try #{index + 1}</button>
             ))}
           </div>
-          <button className="generate-button" type="button" disabled={!imageUrl || !prompt.trim()} onClick={generateGame}>
-            <span>Generate my game</span><span aria-hidden="true">→</span>
+          <button className="generate-button" type="button" disabled={!imageUrl || !prompt.trim() || isGenerating} onClick={generateGame}>
+            <span>{isGenerating ? "Analyzing your scene…" : "Generate my game"}</span><span aria-hidden="true">→</span>
           </button>
+          {generationNotice && <p className="generation-notice">{generationNotice}</p>}
         </div>
 
         <div className="preview-panel">
           <div className="preview-bar">
             <div><i /><i /><i /></div>
             <span>LIVE PREVIEW</span>
-            <b>{gameReady ? "PLAYABLE" : "READY"}</b>
+            <b>{isGenerating ? "ANALYZING" : selectionTarget ? "SELECTING" : gameReady ? generationSource === "gemini" ? "AI PLAYABLE" : "PLAYABLE" : "READY"}</b>
           </div>
-          {gameReady && imageUrl ? (
+          {isGenerating ? (
+            <div className="generation-progress">
+              <div className="scan-line" />
+              <span className="analysis-symbol">✦</span>
+              <small>GEMINI VISION</small>
+              <h2>Reading your reality…</h2>
+              <div className="analysis-steps">
+                <span className="active">Analyzing scene</span>
+                <span>Locating objects</span>
+                <span>Validating game</span>
+              </div>
+            </div>
+          ) : selectionTarget && imageUrl ? (
+            <SceneObjectPicker
+              imageUrl={imageUrl}
+              target={selectionTarget}
+              playerBox={selectedPlayerBox}
+              onSelect={selectObject}
+              onUseDefaults={useDefaultAssets}
+            />
+          ) : gameReady && imageUrl ? (
             <DodgeGame imageUrl={imageUrl} spec={gameSpec} />
           ) : <div className="game-placeholder">
             <div className="grid-glow" />

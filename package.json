@@ -9,6 +9,7 @@
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
