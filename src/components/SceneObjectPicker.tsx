@@ -38,17 +38,27 @@ export function SceneObjectPicker({ imageUrl, target, playerBox, onSelect, onUse
       </div>
 
       <div className="picker-stage">
-        <button
-          className="picker-image-button"
-          type="button"
-          onClick={selectPoint}
-          aria-label={`Select ${target} from scene`}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt="Scene awaiting object selection" />
-          {playerBox && <span className="selection-box player" style={overlayStyle(playerBox)} aria-label="Selected player" />}
-          <span className="picker-crosshair" aria-hidden="true">+</span>
-        </button>
+        <div className="browser-preview-frame">
+          <div className="browser-preview-toolbar" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <span>scene-preview.local</span>
+          </div>
+          <div className="browser-preview-viewport">
+            <button
+              className="picker-image-button"
+              type="button"
+              onClick={selectPoint}
+              aria-label={`Select ${target} from scene`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imageUrl} alt="Scene awaiting object selection" />
+              {playerBox && <span className="selection-box player" style={overlayStyle(playerBox)} aria-label="Selected player" />}
+              <span className="picker-crosshair" aria-hidden="true">+</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="picker-footer">

@@ -375,9 +375,9 @@ export default function Home() {
             </div>
 
             {/* Right Column: AI Stepper / Preview & Manual Selector */}
-            <div className="neon-card" style={{ display: "flex", flexDirection: "column" }}>
+            <div className="neon-card preview-neon-card">
               {selectionTarget && imageUrl ? (
-                <div style={{ flex: 1 }}>
+                <div className="preview-content">
                   <SceneObjectPicker
                     imageUrl={imageUrl}
                     target={selectionTarget}
@@ -387,7 +387,7 @@ export default function Home() {
                   />
                 </div>
               ) : (
-                <div style={{ flex: 1 }}>
+                <div className="stepper-content">
                   <h3 className="stepper-card-title">AI Game Generation Status</h3>
                   <div className="stepper-container">
                     <div className="stepper-line-connector" />
