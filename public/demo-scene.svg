@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e7e0d2"/>
+      <stop offset="1" stop-color="#bcb2d9"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#654a38"/>
+      <stop offset=".5" stop-color="#96735a"/>
+      <stop offset="1" stop-color="#543d31"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#wall)"/>
+  <rect x="70" y="70" width="1060" height="400" rx="20" fill="#f5f2e9" opacity=".72"/>
+  <circle cx="965" cy="160" r="72" fill="#d9ff43" opacity=".88"/>
+  <path d="M0 560L1200 500V800H0Z" fill="url(#desk)"/>
+  <g transform="translate(410 285)">
+    <rect width="390" height="250" rx="17" fill="#171614"/>
+    <rect x="18" y="18" width="354" height="205" rx="8" fill="#7758ff"/>
+    <path d="M-55 250H445L400 300H-10Z" fill="#26231f"/>
+    <circle cx="195" cy="120" r="33" fill="#d9ff43"/>
+    <path d="M182 120L193 132L213 105" fill="none" stroke="#171614" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(170 365)">
+    <path d="M15 0H150V145C150 190 15 190 15 145Z" fill="#f3efe6"/>
+    <ellipse cx="82" cy="4" rx="67" ry="17" fill="#ded4c5"/>
+    <ellipse cx="82" cy="5" rx="49" ry="11" fill="#5e3625"/>
+    <path d="M150 35C215 30 218 128 155 130" fill="none" stroke="#f3efe6" stroke-width="23"/>
+    <path d="M58 -22C45 -52 73 -67 64 -96M96 -20C84 -52 112 -64 103 -94" fill="none" stroke="#fff" stroke-width="8" opacity=".55"/>
+  </g>
+  <text x="105" y="135" fill="#171614" font-family="Arial, sans-serif" font-size="34" font-weight="700">TOKYO BUILD LAB</text>
+  <text x="105" y="180" fill="#665f58" font-family="Arial, sans-serif" font-size="20" letter-spacing="5">MAKE REALITY PLAYABLE</text>
+</svg>
