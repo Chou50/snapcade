@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { DEFAULT_GAME_SPEC, sanitizeGameSpec } from "@/lib/game-spec";
+import { createGameSpecFromPrompt, GAME_TEMPLATES, sanitizeGameSpec } from "@/lib/game-spec";
 
 export const runtime = "nodejs";
 
@@ -7,25 +7,38 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const GEMINI_TIMEOUT_MS = 15_000;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+const boxSchema = {
+  anyOf: [
+    {
+      type: "array",
+      items: { type: "integer", minimum: 0, maximum: 1000 },
+      minItems: 4,
+      maxItems: 4,
+    },
+    { type: "null" },
+  ],
+};
+
 const gameSpecJsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
     version: { type: "string", enum: ["1.0"] },
-    template: { type: "string", enum: ["dodge"] },
-    title: { type: "string", description: "A short, playful game title." },
-    objective: { type: "string", description: "One sentence describing how to win." },
+    template: {
+      type: "string",
+      enum: [...GAME_TEMPLATES],
+      description: "The playable mini-game template chosen from the user prompt.",
+    },
+    title: { type: "string", description: "A short, cyberpunk/neon game title." },
+    objective: { type: "string", description: "One sentence describing how to play or win." },
     player: {
       type: "object",
       additionalProperties: false,
       properties: {
-        label: { type: "string", description: "The visible object controlled by the player." },
+        label: { type: "string", description: "The player-controlled entity or role." },
         box2d: {
-          type: ["array", "null"],
-          description: "[ymin, xmin, ymax, xmax], integers normalized to 0-1000, or null when not confidently visible.",
-          items: { type: "integer", minimum: 0, maximum: 1000 },
-          minItems: 4,
-          maxItems: 4,
+          ...boxSchema,
+          description: "[ymin, xmin, ymax, xmax] normalized to 0-1000 for photo-object games; null for prompt-native games.",
         },
         fallbackAsset: { type: "string", enum: ["player"] },
       },
@@ -35,26 +48,23 @@ const gameSpecJsonSchema = {
       type: "object",
       additionalProperties: false,
       properties: {
-        label: { type: "string", description: "The visible object the player must dodge." },
+        label: { type: "string", description: "The main hazard, timer, target, or enemy." },
         box2d: {
-          type: ["array", "null"],
-          description: "[ymin, xmin, ymax, xmax], integers normalized to 0-1000, or null when not confidently visible.",
-          items: { type: "integer", minimum: 0, maximum: 1000 },
-          minItems: 4,
-          maxItems: 4,
+          ...boxSchema,
+          description: "[ymin, xmin, ymax, xmax] normalized to 0-1000 for photo-object games; null for prompt-native games.",
         },
         fallbackAsset: { type: "string", enum: ["enemy"] },
       },
       required: ["label", "box2d", "fallbackAsset"],
     },
-    difficulty: { type: "integer", enum: [1, 2, 3] },
-    durationSeconds: { type: "integer", minimum: 8, maximum: 12 },
+    difficulty: { type: "integer", minimum: 1, maximum: 3 },
+    durationSeconds: { type: "integer", minimum: 30, maximum: 300 },
     theme: {
       type: "object",
       additionalProperties: false,
       properties: {
-        primaryColor: { type: "string", description: "A six-digit hexadecimal color such as #7758FF." },
-        backgroundTint: { type: "string", description: "A dark six-digit hexadecimal color." },
+        primaryColor: { type: "string", description: "A six-digit hexadecimal neon accent color such as #A855F7." },
+        backgroundTint: { type: "string", description: "A dark six-digit hexadecimal background tint." },
       },
       required: ["primaryColor", "backgroundTint"],
     },
@@ -74,7 +84,7 @@ const gameSpecJsonSchema = {
 
 function safeFallback(prompt: string, warning: string) {
   const { gameSpec } = sanitizeGameSpec({
-    ...DEFAULT_GAME_SPEC,
+    ...createGameSpecFromPrompt(prompt),
     objective: prompt,
   });
 
@@ -82,7 +92,7 @@ function safeFallback(prompt: string, warning: string) {
     source: "fallback",
     gameSpec,
     warnings: [warning],
-    steps: ["Scene received", "Safe defaults prepared", "Manual object selection ready"],
+    steps: ["Prompt classified", `${gameSpec.template} template selected`, "Playable game prepared"],
   });
 }
 
@@ -110,7 +120,7 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return safeFallback(prompt, "Gemini is not configured; manual selection enabled");
+    return safeFallback(prompt, "Gemini is not configured; local prompt template selected");
   }
 
   const imageData = Buffer.from(await image.arrayBuffer()).toString("base64");
@@ -119,40 +129,45 @@ export async function POST(request: Request) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   const instruction = `
-Create a short dodge game from the supplied scene and user request.
+Create a playable mini-game configuration from the user's request.
 
 User request: ${prompt}
 
+Allowed templates:
+- fish-eat: big-fish-eats-small-fish evolution game.
+- link-match: connect/match identical icons to remove them.
+- oracle: crystal ball and tarot card fortune game.
+- farming: sow, water, harvest neon crops.
+- racing: top-down neon racing game.
+- tower-defense: place towers beside a neon track to stop enemies.
+- dress-up: outfit/model styling game.
+- bubble-pop: full-screen bubble wrap pop game.
+- dodge: photo-object dodge/survival game.
+
 Rules:
-- Use only the fixed template "dodge".
-- Choose one clearly visible object as the player and one clearly visible, different object as the enemy.
-- Bounding boxes must be [ymin, xmin, ymax, xmax], normalized to integer coordinates from 0 to 1000.
-- Never invent coordinates. Return null for box2d if the requested object is not confidently visible.
-- The player and enemy boxes must describe different objects.
-- Keep durationSeconds between 8 and 12. Prefer 9 for a live demo.
+- Choose the template that best matches the user's request. Do not default to dodge unless the user asks for dodging/survival.
+- Prefer cyberpunk/neon visual language in title, colors, and objective when the user asks for it.
+- For fish-eat/link-match/oracle/farming/racing/tower-defense/dress-up/bubble-pop, set player.box2d and enemy.box2d to null.
+- For dodge only, you may choose visible photo objects and return normalized [ymin, xmin, ymax, xmax] boxes when confident; otherwise return null.
+- durationSeconds should match the game style: 90 for timed arcade games, 120 for farming/tower-defense/bubble-pop, 300 for oracle.
 - Return JSON only using the provided schema.
 `.trim();
 
   try {
-    const requestPromise = client.interactions.create(
-        {
-          model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
-          input: [
-            { type: "text", text: instruction },
-            { type: "image", data: imageData, mime_type: image.type },
-          ],
-          response_format: {
-            type: "text",
-            mime_type: "application/json",
-            schema: gameSpecJsonSchema,
-          },
-        },
-        {
-          timeout: GEMINI_TIMEOUT_MS,
-          maxRetries: 0,
-          fetchOptions: { signal: controller.signal },
-        },
-      );
+    const requestPromise = client.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
+      contents: [
+        { text: instruction },
+        { inlineData: { data: imageData, mimeType: image.type } },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: gameSpecJsonSchema,
+        temperature: 0.25,
+        maxOutputTokens: 1200,
+        abortSignal: controller.signal,
+      },
+    });
 
     const hardTimeout = new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
@@ -161,14 +176,14 @@ Rules:
       }, GEMINI_TIMEOUT_MS);
     });
 
-    const interaction = await Promise.race([requestPromise, hardTimeout]);
+    const response = await Promise.race([requestPromise, hardTimeout]);
 
-    const { gameSpec, warnings } = sanitizeGameSpec(interaction.output_text ?? "");
+    const { gameSpec, warnings } = sanitizeGameSpec(response.text ?? "");
     return Response.json({
       source: "gemini",
       gameSpec,
       warnings,
-      steps: ["Scene analyzed", `${gameSpec.player.label} and ${gameSpec.enemy.label} detected`, "Game configuration validated"],
+      steps: ["Prompt analyzed", `${gameSpec.template} template selected`, "Game configuration validated"],
     });
   } catch (error) {
     const timedOut = controller.signal.aborted;
@@ -179,8 +194,8 @@ Rules:
     return safeFallback(
       prompt,
       timedOut
-        ? "Gemini request timed out; manual selection enabled"
-        : "Gemini request failed; manual selection enabled",
+        ? "Gemini request timed out; local prompt template selected"
+        : "Gemini request failed; local prompt template selected",
     );
   } finally {
     if (timeout) clearTimeout(timeout);

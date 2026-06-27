@@ -1,14 +1,14 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
-import { DodgeGame } from "@/components/DodgeGame";
+import { NeonGame } from "@/components/NeonGame";
 import { SceneObjectPicker } from "@/components/SceneObjectPicker";
-import { BoundingBox, DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
+import { BoundingBox, createGameSpecFromPrompt, DEFAULT_GAME_SPEC, GameSpec, sanitizeGameSpec } from "@/lib/game-spec";
 
 const EXAMPLE_PROMPTS = [
-  "Control the laptop to dodge falling coffee cups",
-  "Turn this desk into a 10-second survival game.",
-  "Let me dodge everything except the blue object.",
+  "做一个赛博朋克霓虹风的大鱼吃小鱼游戏，玩家控制一条发光几何鱼，通过吞噬更小的彩色发光鱼进化变大，带倒计时和分数显示。",
+  "做一个赛博朋克霓虹风的连连看游戏，网格里满是发光的IT图标，玩家连接两个相同图标即可消除，带倒计时和分数显示。",
+  "做一个满屏塑料泡泡的解压小游戏，手指点哪哪里就会啪的一声破掉，捏完可以一键刷新。",
 ];
 
 export default function Home() {
@@ -31,6 +31,28 @@ export default function Home() {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const stepTimer1 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stepTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const template = params.get("template");
+    if (!template) return;
+
+    const { gameSpec: safeSpec } = sanitizeGameSpec({
+      template,
+      objective: params.get("prompt") ?? template,
+    });
+    setImageUrl("/demo-scene.svg");
+    setFileName("Template preview · demo scene");
+    setImageFile(null);
+    setGameSpec(safeSpec);
+    setSelectionTarget(null);
+    setSelectedPlayerBox(null);
+    setGenerationSource("demo");
+    setGenerationNotice("");
+    setCurrentStep(4);
+    setGameReady(true);
+    setViewMode("play");
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -112,16 +134,19 @@ export default function Home() {
     setCurrentStep(0);
   }
 
-  function createBaseSpec(includeDemoBoxes: boolean) {
+  function createBaseSpec(includeDemoBoxes: boolean, forceDodge = false) {
+    const baseSpec = forceDodge
+      ? sanitizeGameSpec({ template: "dodge", objective: prompt }).gameSpec
+      : createGameSpecFromPrompt(prompt);
     const { gameSpec: safeSpec } = sanitizeGameSpec({
-      ...DEFAULT_GAME_SPEC,
+      ...baseSpec,
       objective: prompt,
       player: {
-        ...DEFAULT_GAME_SPEC.player,
+        ...baseSpec.player,
         box2d: includeDemoBoxes ? [356, 296, 731, 713] : null,
       },
       enemy: {
-        ...DEFAULT_GAME_SPEC.enemy,
+        ...baseSpec.enemy,
         box2d: includeDemoBoxes ? [336, 142, 688, 321] : null,
       },
     });
@@ -130,7 +155,7 @@ export default function Home() {
 
   function startManualSelection() {
     if (!imageUrl) return;
-    setGameSpec(createBaseSpec(false));
+    setGameSpec(createBaseSpec(false, true));
     setGameReady(false);
     setSelectedPlayerBox(null);
     setSelectionTarget("player");
@@ -138,7 +163,7 @@ export default function Home() {
 
   function applyGeneratedSpec(safeSpec: GameSpec) {
     setGameSpec(safeSpec);
-    if (safeSpec.player.box2d && safeSpec.enemy.box2d) {
+    if (safeSpec.template !== "dodge" || (safeSpec.player.box2d && safeSpec.enemy.box2d)) {
       setSelectionTarget(null);
       setGameReady(true);
       setCurrentStep(4);
@@ -197,10 +222,12 @@ export default function Home() {
       applyGeneratedSpec(safeSpec);
     } catch {
       setGenerationSource("fallback");
-      setGenerationNotice("Generation was unavailable; safe selection mode enabled.");
+      setGenerationNotice("Generation was unavailable; local prompt template selected.");
       setGameSpec(createBaseSpec(false));
       setSelectedPlayerBox(null);
-      setSelectionTarget("player");
+      setSelectionTarget(null);
+      setGameReady(true);
+      setCurrentStep(4);
     } finally {
       setIsGenerating(false);
     }
@@ -226,7 +253,7 @@ export default function Home() {
   }
 
   function useDefaultAssets() {
-    setGameSpec(createBaseSpec(false));
+    setGameSpec(createBaseSpec(false, true));
     setSelectionTarget(null);
     setGameReady(true);
     setCurrentStep(4);
@@ -463,7 +490,7 @@ export default function Home() {
                         <span className="stepper-label">Ready</span>
                         {currentStep === 4 && (
                           <span className="stepper-desc">
-                            Your custom dodge game has been successfully generated from the image.
+                            Your custom {gameSpec.template} game has been generated from the prompt.
                           </span>
                         )}
                       </div>
@@ -482,7 +509,7 @@ export default function Home() {
               <div className="game-meta-left">
                 <span className="game-meta-title">Mini-Game: {gameSpec.title}</span>
                 <span className="game-meta-stats">
-                  Difficulty: {gameSpec.difficulty} | Goal: {gameSpec.objective}
+                  Type: {gameSpec.template} | Difficulty: {gameSpec.difficulty} | Goal: {gameSpec.objective}
                 </span>
               </div>
               <button
@@ -493,7 +520,7 @@ export default function Home() {
                 Escape to Main
               </button>
             </div>
-            {imageUrl && <DodgeGame imageUrl={imageUrl} spec={gameSpec} onExit={() => setViewMode("setup")} />}
+            {imageUrl && <NeonGame imageUrl={imageUrl} spec={gameSpec} onExit={() => setViewMode("setup")} />}
           </div>
         </div>
       )}
