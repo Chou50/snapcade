@@ -14,10 +14,10 @@ Set these values in `.env.local`:
 
 ```env
 GEMINI_API_KEY=your_key
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_AGENT=antigravity-preview-05-2026
 ```
 
-The application never sends the API key to the browser. If Gemini is unavailable, generation returns a safe `GameSpec` and asks the user to select the player and enemy directly in the image.
+The application never sends the API key to the browser. Game generation runs through the Gemini API Interactions API using the Antigravity managed agent. If the managed agent is unavailable, generation returns a safe `GameSpec` and asks the user to select the player and enemy directly in the image.
 
 ## Verification
 
@@ -36,7 +36,7 @@ Recommended production configuration:
 
 - Region: `asia-northeast1`
 - Public access enabled for the demo
-- `GEMINI_MODEL` supplied as a normal environment variable
+- `GEMINI_AGENT` supplied as a normal environment variable
 - `GEMINI_API_KEY` supplied from Google Secret Manager
 - Request timeout of at least 60 seconds; the application itself falls back after 15 seconds
 
@@ -47,7 +47,7 @@ gcloud run deploy snapcade \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated \
-  --set-env-vars GEMINI_MODEL=gemini-3.5-flash \
+  --set-env-vars GEMINI_AGENT=antigravity-preview-05-2026 \
   --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
   --timeout 60
 ```

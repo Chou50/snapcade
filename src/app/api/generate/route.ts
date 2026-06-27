@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const GEMINI_TIMEOUT_MS = 15_000;
+const DEFAULT_GEMINI_AGENT = "antigravity-preview-05-2026";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const boxSchema = {
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return safeFallback(prompt, "Gemini is not configured; local prompt template selected");
+    return safeFallback(prompt, "Managed agent is not configured; local prompt template selected");
   }
 
   const imageData = Buffer.from(await image.arrayBuffer()).toString("base64");
@@ -154,20 +155,21 @@ Rules:
 `.trim();
 
   try {
-    const requestPromise = client.models.generateContent({
-      model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
-      contents: [
-        { text: instruction },
-        { inlineData: { data: imageData, mimeType: image.type } },
+    const requestPromise = client.interactions.create({
+      agent: process.env.GEMINI_AGENT || DEFAULT_GEMINI_AGENT,
+      environment: { type: "remote" },
+      input: [
+        { type: "text", text: instruction },
+        { type: "image", data: imageData, mime_type: image.type },
       ],
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: gameSpecJsonSchema,
-        temperature: 0.25,
-        maxOutputTokens: 1200,
-        abortSignal: controller.signal,
+      response_modalities: ["text"],
+      response_format: {
+        type: "text",
+        mime_type: "application/json",
+        schema: gameSpecJsonSchema,
       },
-    });
+      store: false,
+    }, { signal: controller.signal });
 
     const hardTimeout = new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
@@ -176,26 +178,26 @@ Rules:
       }, GEMINI_TIMEOUT_MS);
     });
 
-    const response = await Promise.race([requestPromise, hardTimeout]);
+    const interaction = await Promise.race([requestPromise, hardTimeout]);
 
-    const { gameSpec, warnings } = sanitizeGameSpec(response.text ?? "");
+    const { gameSpec, warnings } = sanitizeGameSpec(interaction.output_text ?? "");
     return Response.json({
-      source: "gemini",
+      source: "managed-agent",
       gameSpec,
       warnings,
-      steps: ["Prompt analyzed", `${gameSpec.template} template selected`, "Game configuration validated"],
+      steps: ["Managed agent analyzed prompt and image", `${gameSpec.template} template selected`, "Game configuration validated"],
     });
   } catch (error) {
     const timedOut = controller.signal.aborted;
     if (!timedOut) {
       const message = error instanceof Error ? error.message : "Unknown Gemini error";
-      console.error("Gemini generation failed:", message.replaceAll(apiKey, "[redacted]").slice(0, 500));
+      console.error("Managed agent generation failed:", message.replaceAll(apiKey, "[redacted]").slice(0, 500));
     }
     return safeFallback(
       prompt,
       timedOut
-        ? "Gemini request timed out; local prompt template selected"
-        : "Gemini request failed; local prompt template selected",
+        ? "Managed agent request timed out; local prompt template selected"
+        : "Managed agent request failed; local prompt template selected",
     );
   } finally {
     if (timeout) clearTimeout(timeout);
