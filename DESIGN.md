@@ -470,7 +470,7 @@ generate_game_spec(scene_analysis)
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | `image` | File | JPEG/PNG/WebP，限制大小 |
-| `prompt` | string | 可选，0–300 字符；为空时由 Agent 根据图片自动生成英文 prompt |
+| `prompt` | string | 可选，0–300 字符；为空时由 Gemini Vision 根据图片自动生成英文 prompt，再交给 Managed Agent 实现 |
 
 成功响应：
 
@@ -480,7 +480,11 @@ generate_game_spec(scene_analysis)
   "source": "managed-agent",
   "gameSpec": {},
   "suggestedPrompt": "Create a neon link-match game from the office objects.",
-  "agentTrace": [],
+  "agentTrace": [
+    { "title": "Gemini Vision analyzed image", "status": "complete" },
+    { "title": "Gemini generated prompt", "status": "complete" },
+    { "title": "Managed agent implemented game", "status": "complete" }
+  ],
   "warnings": []
 }
 ```
