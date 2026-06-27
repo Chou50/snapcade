@@ -24,7 +24,7 @@ export default function Home() {
   const [selectionTarget, setSelectionTarget] = useState<"player" | "enemy" | null>(null);
   const [selectedPlayerBox, setSelectedPlayerBox] = useState<BoundingBox | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationSource, setGenerationSource] = useState<"gemini" | "fallback" | "demo" | null>(null);
+  const [generationSource, setGenerationSource] = useState<"managed-agent" | "gemini" | "fallback" | "demo" | null>(null);
   const [generationNotice, setGenerationNotice] = useState("");
 
   // Stepper Loading State (0: idle/none, 1: analyzing, 2: detecting, 3: building, 4: ready)
@@ -211,7 +211,7 @@ export default function Home() {
       const response = await fetch("/api/generate", { method: "POST", body: formData });
       if (!response.ok) throw new Error("Generation request failed");
       const result = await response.json() as {
-        source?: "gemini" | "fallback";
+        source?: "managed-agent" | "gemini" | "fallback";
         gameSpec?: unknown;
         warnings?: string[];
       };

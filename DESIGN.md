@@ -447,7 +447,7 @@ generate_game_spec(scene_analysis)
 - 只展示真实发生的工具调用和状态。
 - 不展示或声称展示模型内部 chain-of-thought。
 - 未接通时只在 Roadmap 中标注，不写入“已使用技术”。
-- Agent 失败必须回退到普通 Gemini 请求或默认配置。
+- Managed agent 失败必须回退到本地安全配置。
 
 ---
 
@@ -467,7 +467,7 @@ generate_game_spec(scene_analysis)
 ```json
 {
   "requestId": "demo-123",
-  "source": "gemini",
+  "source": "managed-agent",
   "gameSpec": {},
   "warnings": []
 }
@@ -656,7 +656,8 @@ MVP 稳定后，可按以下顺序扩展：
 
 ## 19. 参考资料
 
-- [Gemini API — 图片理解与物体检测](https://ai.google.dev/gemini-api/docs/image-understanding?hl=zh-CN)
+- [Gemini API — Managed agents quickstart](https://ai.google.dev/gemini-api/docs/managed-agents-quickstart)
+- [Gemini API — Interactions](https://ai.google.dev/gemini-api/docs/interactions)
 - [Cloud Run — 部署容器](https://docs.cloud.google.com/run/docs/deploying)
 - [Cloud Run — 请求超时](https://docs.cloud.google.com/run/docs/configuring/request-timeout)
 - [Gemini AI Hackathon @ Google Japan](https://luma.com/geminitokyo?tk=eLnOCX)
